@@ -1,21 +1,22 @@
-# requirements.txt - Fixed version compatibility
+# requirements.txt - Updated with correct Anthropic version
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 pydantic==2.5.0
 pydantic-settings==2.1.0
 
-# Authentication & Database - Fixed versions
+# Authentication & Database
 supabase==2.1.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
-# AI Integration
-anthropic==0.7.8
+# AI Integration - Updated to latest version
+anthropic==0.40.0
 
-# PDF Generation
+# PDF Generation - Multiple options for reliability
 aiofiles==23.2.1
 aiohttp==3.9.1
+reportlab==4.0.4
 
 # Utilities
 python-dotenv==1.0.0
