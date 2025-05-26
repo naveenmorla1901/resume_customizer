@@ -1,0 +1,29 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./temp_files:/app/temp_files
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+    depends_on:
+      - redis
+    
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  # Optional: LaTeX service for PDF generation
+  latex:
+    image: texlive/texlive:latest
+    volumes:
+      - ./temp_files:/workspace
+    command: tail -f /dev/null
