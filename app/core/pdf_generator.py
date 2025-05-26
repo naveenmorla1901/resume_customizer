@@ -3,8 +3,9 @@ import os
 import subprocess
 import tempfile
 import uuid
+import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 from app.config import get_settings
 
 class PDFGeneratorService:
@@ -13,10 +14,10 @@ class PDFGeneratorService:
         self.temp_dir = Path(self.settings.temp_file_directory)
         self.temp_dir.mkdir(exist_ok=True)
     
-    def latex_to_pdf(self, latex_content: str, filename: Optional[str] = None) -> tuple[str, str]:
+    async def latex_to_pdf(self, latex_content: str, filename: Optional[str] = None) -> str:
         """
         Convert LaTeX content to PDF
-        Returns: (pdf_file_path, temp_dir_path)
+        Returns: pdf_file_path (string)
         """
         if filename is None:
             filename = f"resume_{uuid.uuid4().hex[:8]}"
@@ -33,37 +34,48 @@ class PDFGeneratorService:
             with open(tex_file_path, 'w', encoding='utf-8') as f:
                 f.write(latex_content)
             
-            # Compile LaTeX to PDF using pdflatex
-            result = subprocess.run([
+            # Run pdflatex in a thread to avoid blocking
+            result = await asyncio.create_subprocess_exec(
                 'pdflatex',
                 '-interaction=nonstopmode',
                 '-output-directory', str(temp_compilation_dir),
-                str(tex_file_path)
-            ], capture_output=True, text=True, cwd=temp_compilation_dir)
+                str(tex_file_path),
+                cwd=temp_compilation_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await result.communicate()
             
             if result.returncode != 0:
-                raise Exception(f"LaTeX compilation failed: {result.stderr}")
+                raise Exception(f"LaTeX compilation failed: {stderr.decode()}")
             
             if not pdf_file_path.exists():
                 raise Exception("PDF file was not generated")
             
-            return str(pdf_file_path), str(temp_compilation_dir)
+            return str(pdf_file_path)
             
         except Exception as e:
             # Clean up on error
-            self._cleanup_temp_dir(temp_compilation_dir)
+            await self._cleanup_temp_dir_async(temp_compilation_dir)
             raise Exception(f"PDF generation error: {str(e)}")
     
-    def cleanup_temp_dir(self, temp_dir_path: str):
-        """Clean up temporary compilation directory"""
-        self._cleanup_temp_dir(Path(temp_dir_path))
+    async def cleanup_temp_file(self, pdf_path: str):
+        """Clean up a temporary PDF file and its directory"""
+        try:
+            pdf_file = Path(pdf_path)
+            if pdf_file.exists():
+                temp_dir = pdf_file.parent
+                await self._cleanup_temp_dir_async(temp_dir)
+        except Exception as e:
+            print(f"Warning: Could not clean up temp file {pdf_path}: {e}")
     
-    def _cleanup_temp_dir(self, temp_dir: Path):
-        """Helper method to clean up temporary directory"""
+    async def _cleanup_temp_dir_async(self, temp_dir: Path):
+        """Helper method to clean up temporary directory asynchronously"""
         try:
             if temp_dir.exists():
                 import shutil
-                shutil.rmtree(temp_dir)
+                await asyncio.to_thread(shutil.rmtree, temp_dir)
         except Exception as e:
             print(f"Warning: Could not clean up temp directory {temp_dir}: {e}")
 
@@ -79,12 +91,15 @@ class OnlinePDFGeneratorService:
         self.temp_dir = Path(self.settings.temp_file_directory)
         self.temp_dir.mkdir(exist_ok=True)
     
-    async def latex_to_pdf_online(self, latex_content: str) -> str:
+    async def latex_to_pdf(self, latex_content: str, filename: Optional[str] = None) -> str:
         """
-        Convert LaTeX to PDF using an online service like LaTeX.Online
+        Convert LaTeX to PDF using an online service
+        Returns: pdf_file_path (string)
         """
-        import aiohttp
-        import aiofiles
+        try:
+            import aiohttp
+        except ImportError:
+            raise Exception("aiohttp is required for online PDF generation. Install with: pip install aiohttp")
         
         url = "https://latex.ytotech.com/builds/sync"
         
@@ -94,29 +109,68 @@ class OnlinePDFGeneratorService:
         data.add_field('resources', latex_content, filename='main.tex', content_type='text/plain')
         
         try:
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=30)  # 30 second timeout
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(url, data=data) as response:
                     if response.status == 200:
                         pdf_content = await response.read()
                         
                         # Save PDF to temp file
-                        temp_pdf_path = self.temp_dir / f"resume_{uuid.uuid4().hex[:8]}.pdf"
-                        async with aiofiles.open(temp_pdf_path, 'wb') as f:
-                            await f.write(pdf_content)
+                        if filename is None:
+                            filename = f"resume_{uuid.uuid4().hex[:8]}"
+                        temp_pdf_path = self.temp_dir / f"{filename}.pdf"
+                        
+                        with open(temp_pdf_path, 'wb') as f:
+                            f.write(pdf_content)
                         
                         return str(temp_pdf_path)
                     else:
                         error_text = await response.text()
-                        raise Exception(f"Online LaTeX compilation failed: {error_text}")
+                        raise Exception(f"Online LaTeX compilation failed (HTTP {response.status}): {error_text}")
                         
+        except asyncio.TimeoutError:
+            raise Exception("Online PDF generation timed out")
         except Exception as e:
             raise Exception(f"Online PDF generation error: {str(e)}")
+    
+    async def cleanup_temp_file(self, pdf_path: str):
+        """Clean up a temporary PDF file"""
+        try:
+            pdf_file = Path(pdf_path)
+            if pdf_file.exists():
+                await asyncio.to_thread(pdf_file.unlink)
+        except Exception as e:
+            print(f"Warning: Could not clean up temp file {pdf_path}: {e}")
 
 # Initialize PDF generator service
 # Use local LaTeX installation by default, fallback to online service if needed
+async def initialize_pdf_generator():
+    """Initialize the appropriate PDF generator"""
+    try:
+        # Check if pdflatex is available
+        result = await asyncio.create_subprocess_exec(
+            'pdflatex', '--version',
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await result.communicate()
+        
+        if result.returncode == 0:
+            return PDFGeneratorService(), "local"
+        else:
+            raise Exception("pdflatex not working")
+            
+    except Exception:
+        print("Warning: pdflatex not found. Using online PDF generation service.")
+        return OnlinePDFGeneratorService(), "online"
+
+# Create a global instance (will be initialized in main.py)
+pdf_generator = None
+PDF_GENERATION_METHOD = None
+
+# Temporary fallback for immediate use
 try:
-    # Check if pdflatex is available
-    subprocess.run(['pdflatex', '--version'], capture_output=True)
+    subprocess.run(['pdflatex', '--version'], capture_output=True, check=True)
     pdf_generator = PDFGeneratorService()
     PDF_GENERATION_METHOD = "local"
 except (subprocess.CalledProcessError, FileNotFoundError):

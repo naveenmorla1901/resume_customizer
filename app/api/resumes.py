@@ -1,5 +1,5 @@
 # app/api/resumes.py
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, BackgroundTasks
 from fastapi.responses import FileResponse
 from supabase import Client
 from typing import List
@@ -169,6 +169,7 @@ async def delete_resume(
 @router.get("/{resume_id}/pdf")
 async def get_resume_pdf(
     resume_id: str,
+    background_tasks: BackgroundTasks,
     current_user = Depends(get_current_user),
     supabase: Client = Depends(get_supabase_client)
 ):
@@ -185,12 +186,15 @@ async def get_resume_pdf(
         
         resume = response.data[0]
         
-        # Generate PDF
-        if PDF_GENERATION_METHOD == "local":
-            pdf_path, temp_dir = pdf_generator.latex_to_pdf(
+        # Generate PDF using the unified interface
+        try:
+            pdf_path = await pdf_generator.latex_to_pdf(
                 resume["latex_content"], 
                 f"{resume['name']}_{resume_id[:8]}"
             )
+            
+            # Schedule cleanup of temp file in background
+            background_tasks.add_task(pdf_generator.cleanup_temp_file, pdf_path)
             
             return FileResponse(
                 pdf_path,
@@ -198,13 +202,11 @@ async def get_resume_pdf(
                 filename=f"{resume['name']}.pdf",
                 headers={"Content-Disposition": f"attachment; filename={resume['name']}.pdf"}
             )
-        else:
-            # For online PDF generation, return a download URL
-            pdf_path = await pdf_generator.latex_to_pdf_online(resume["latex_content"])
-            return FileResponse(
-                pdf_path,
-                media_type="application/pdf",
-                filename=f"{resume['name']}.pdf"
+            
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to generate PDF: {str(e)}"
             )
             
     except HTTPException:

@@ -1,5 +1,6 @@
 # app/core/claude.py
 import anthropic
+import asyncio
 from app.config import get_settings
 from typing import List
 from app.models.resume import ResumeSections
@@ -9,7 +10,7 @@ class ClaudeService:
         settings = get_settings()
         self.client = anthropic.Anthropic(api_key=settings.claude_api_key)
     
-    def customize_resume(
+    async def customize_resume(
         self, 
         latex_content: str, 
         job_description: str, 
@@ -29,16 +30,10 @@ class ClaudeService:
         )
         
         try:
-            response = self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=4000,
-                temperature=0.7,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
+            # Run the Claude API call in a thread to avoid blocking
+            response = await asyncio.to_thread(
+                self._call_claude_api,
+                prompt
             )
             
             # Extract LaTeX code from response
@@ -47,6 +42,20 @@ class ClaudeService:
             
         except Exception as e:
             raise Exception(f"Claude API error: {str(e)}")
+    
+    def _call_claude_api(self, prompt: str):
+        """Synchronous Claude API call"""
+        return self.client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=4000,
+            temperature=0.7,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
     
     def _build_customization_prompt(
         self, 

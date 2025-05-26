@@ -37,7 +37,7 @@ async def customize_resume(
         
         # Use Claude API to customize the resume
         try:
-            customized_latex = claude_service.customize_resume(
+            customized_latex = await claude_service.customize_resume(
                 latex_content=original_resume["latex_content"],
                 job_description=customization_request.job_description,
                 sections_to_modify=customization_request.sections_to_modify,
@@ -83,22 +83,20 @@ async def customize_resume(
             temp_response = supabase.table("resumes").insert(temp_resume_data).execute()
             temp_resume_id = temp_response.data[0]["id"]
         
-        # Generate PDF preview (this could be done in background)
+        # Generate PDF preview
         pdf_url = None
         try:
-            if PDF_GENERATION_METHOD == "local":
-                pdf_path, temp_dir = pdf_generator.latex_to_pdf(
-                    customized_latex, 
-                    f"customized_{temp_resume_id[:8]}"
-                )
-                pdf_url = f"/static/customized_{temp_resume_id[:8]}.pdf"
-                
-                # Schedule cleanup of temp files in background
-                background_tasks.add_task(pdf_generator.cleanup_temp_dir, temp_dir)
-                
-            else:
-                pdf_path = await pdf_generator.latex_to_pdf_online(customized_latex)
-                pdf_url = f"/static/{pdf_path.split('/')[-1]}"
+            pdf_path = await pdf_generator.latex_to_pdf(
+                customized_latex, 
+                f"customized_{temp_resume_id[:8]}"
+            )
+            
+            # Since we're generating a preview PDF, we could expose it through a static endpoint
+            # For now, we'll return the preview endpoint URL
+            pdf_url = f"/api/customize/preview/{temp_resume_id}"
+            
+            # Schedule cleanup of temp files in background (after some delay to allow preview)
+            # background_tasks.add_task(pdf_generator.cleanup_temp_file, pdf_path)
                 
         except Exception as e:
             # PDF generation failed, but we can still return the LaTeX
@@ -121,6 +119,7 @@ async def customize_resume(
 @router.get("/preview/{temp_resume_id}")
 async def get_customized_resume_preview(
     temp_resume_id: str,
+    background_tasks: BackgroundTasks,
     current_user = Depends(get_current_user),
     supabase: Client = Depends(get_supabase_client)
 ):
@@ -141,24 +140,26 @@ async def get_customized_resume_preview(
         
         resume = response.data[0]
         
-        # Generate PDF
-        if PDF_GENERATION_METHOD == "local":
-            pdf_path, temp_dir = pdf_generator.latex_to_pdf(
+        # Generate PDF using the unified interface
+        try:
+            pdf_path = await pdf_generator.latex_to_pdf(
                 resume["latex_content"], 
                 f"preview_{temp_resume_id[:8]}"
             )
+            
+            # Schedule cleanup of temp file in background
+            background_tasks.add_task(pdf_generator.cleanup_temp_file, pdf_path)
             
             return FileResponse(
                 pdf_path,
                 media_type="application/pdf",
                 filename=f"{resume['name']}_preview.pdf"
             )
-        else:
-            pdf_path = await pdf_generator.latex_to_pdf_online(resume["latex_content"])
-            return FileResponse(
-                pdf_path,
-                media_type="application/pdf",
-                filename=f"{resume['name']}_preview.pdf"
+            
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to generate preview: {str(e)}"
             )
             
     except HTTPException:
