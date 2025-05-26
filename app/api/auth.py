@@ -31,16 +31,21 @@ async def login(
 ):
     """User login endpoint"""
     try:
+        print(f"Attempting login for: {login_data.email}")
+        
+        # Use the auth.sign_in_with_password method
         response = supabase.auth.sign_in_with_password({
             "email": login_data.email,
             "password": login_data.password
         })
         
-        if response.user is None:
+        if not response.user or not response.session:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password"
             )
+        
+        print(f"✅ Login successful for: {login_data.email}")
         
         return AuthResponse(
             access_token=response.session.access_token,
@@ -48,7 +53,10 @@ async def login(
             email=response.user.email
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"❌ Login error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
@@ -61,6 +69,8 @@ async def signup(
 ):
     """User signup endpoint"""
     try:
+        print(f"Attempting signup for: {signup_data.email}")
+        
         response = supabase.auth.sign_up({
             "email": signup_data.email,
             "password": signup_data.password,
@@ -71,19 +81,44 @@ async def signup(
             }
         })
         
-        if response.user is None:
+        if not response.user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Failed to create account"
             )
         
-        return AuthResponse(
-            access_token=response.session.access_token,
-            user_id=response.user.id,
-            email=response.user.email
-        )
+        print(f"✅ Signup successful for: {signup_data.email}")
         
+        # Try to get session, if not available, attempt login
+        if response.session:
+            return AuthResponse(
+                access_token=response.session.access_token,
+                user_id=response.user.id,
+                email=response.user.email
+            )
+        else:
+            # Try to sign in immediately after signup
+            login_response = supabase.auth.sign_in_with_password({
+                "email": signup_data.email,
+                "password": signup_data.password
+            })
+            
+            if login_response.session and login_response.user:
+                return AuthResponse(
+                    access_token=login_response.session.access_token,
+                    user_id=login_response.user.id,
+                    email=login_response.user.email
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_201_CREATED, 
+                    detail="Account created successfully. Please try logging in."
+                )
+        
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"❌ Signup error: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to create account: {str(e)}"
@@ -99,10 +134,8 @@ async def logout(
         supabase.auth.sign_out()
         return {"message": "Successfully logged out"}
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Logout failed"
-        )
+        print(f"Logout error: {e}")
+        return {"message": "Logged out"}
 
 @router.get("/me")
 async def get_current_user_info(current_user = Depends(get_current_user)):
@@ -110,5 +143,5 @@ async def get_current_user_info(current_user = Depends(get_current_user)):
     return {
         "user_id": current_user.id,
         "email": current_user.email,
-        "metadata": current_user.user_metadata
+        "metadata": getattr(current_user, 'user_metadata', {})
     }

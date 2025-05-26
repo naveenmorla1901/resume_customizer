@@ -1,6 +1,7 @@
 # app/config.py
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from typing import List
 
 class Settings(BaseSettings):
     # Supabase Configuration
@@ -14,7 +15,7 @@ class Settings(BaseSettings):
     # Application Settings
     app_name: str = "Resume Customizer"
     debug: bool = False
-    allowed_origins: list = ["http://localhost:3000"]
+    allowed_origins: str = "http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000"
     
     # File Storage
     temp_file_directory: str = "temp_files"
@@ -22,6 +23,10 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+    
+    def get_allowed_origins(self) -> List[str]:
+        """Parse the allowed origins string into a list"""
+        return [origin.strip() for origin in self.allowed_origins.split(",")]
 
 @lru_cache()
 def get_settings():
