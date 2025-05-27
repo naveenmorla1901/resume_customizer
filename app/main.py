@@ -7,15 +7,68 @@ from app.config import get_settings
 from app.api import auth, resumes, customization
 from pathlib import Path
 import os
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
 app = FastAPI(
     title=settings.app_name,
     description="A web application for customizing LaTeX resumes using AI",
-    version="1.0.0",
+    version="2.1.0",
     debug=settings.debug
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup"""
+    logger.info("🚀 Starting Resume Customizer V2.1")
+    
+    # Initialize AI service
+    try:
+        from app.core.ai_service import ai_service
+        providers = ai_service.get_available_providers()
+        logger.info(f"✅ AI Service initialized with providers: {list(providers.keys())}")
+        
+        if not providers:
+            logger.warning("⚠️ No AI providers available. Check your API keys in .env file.")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize AI service: {e}")
+    
+    # Ensure temp directory exists
+    temp_dir = Path("temp_files")
+    if not temp_dir.exists():
+        temp_dir.mkdir(exist_ok=True)
+        logger.info("📁 Created temp_files directory")
+    
+    logger.info("✅ Startup complete")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    logger.info("👋 Shutting down Resume Customizer")
+    
+    # Cleanup temp files if needed
+    try:
+        temp_dir = Path("temp_files")
+        if temp_dir.exists():
+            import os
+            import time
+            
+            # Clean up files older than 1 hour
+            current_time = time.time()
+            for file_path in temp_dir.glob("*.pdf"):
+                if current_time - file_path.stat().st_mtime > 3600:  # 1 hour
+                    file_path.unlink()
+                    
+    except Exception as e:
+        logger.warning(f"Cleanup warning: {e}")
+    
+    logger.info("✅ Shutdown complete")
 
 # CORS middleware
 app.add_middleware(

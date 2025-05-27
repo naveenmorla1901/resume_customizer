@@ -1,7 +1,7 @@
-# app/config.py
+# app/config.py - Updated with multiple AI provider support
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-from typing import List
+from typing import List, Optional
 
 class Settings(BaseSettings):
     # Supabase Configuration
@@ -9,8 +9,10 @@ class Settings(BaseSettings):
     supabase_anon_key: str
     supabase_service_key: str
     
-    # Claude API Configuration
-    claude_api_key: str
+    # AI API Configuration
+    claude_api_key: Optional[str] = None
+    gemini_api_key: Optional[str] = None
+    deepseek_api_key: Optional[str] = None
     
     # Application Settings
     app_name: str = "Resume Customizer"

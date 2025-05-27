@@ -1,4 +1,4 @@
-# requirements.txt - Updated with correct Anthropic version
+# requirements.txt - Multi-AI provider support
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
@@ -10,8 +10,10 @@ supabase==2.1.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 
-# AI Integration - Updated to latest version
-anthropic==0.40.0
+# AI Integration - Multiple providers (Fixed versions for compatibility)
+anthropic>=0.50.0
+google-generativeai>=0.8.0
+httpx>=0.24.0,<0.25.0
 
 # PDF Generation - Multiple options for reliability
 aiofiles==23.2.1

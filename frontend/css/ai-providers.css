@@ -1,0 +1,274 @@
+/* Additional CSS for AI Provider Selection and improved styling */
+
+/* AI Provider Selection */
+.provider-selection {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.provider-option {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: var(--bg-color);
+}
+
+.provider-option:hover {
+    border-color: var(--primary-color);
+    background: var(--primary-color-alpha);
+}
+
+.provider-option input[type="radio"] {
+    margin-right: 12px;
+    accent-color: var(--primary-color);
+}
+
+.provider-option input[type="radio"]:checked + .provider-name {
+    color: var(--primary-color);
+    font-weight: 500;
+}
+
+.provider-name {
+    font-size: 14px;
+    color: var(--text-color);
+    transition: color 0.2s ease;
+}
+
+.provider-error {
+    padding: 16px;
+    text-align: center;
+    color: var(--error-color);
+    background: var(--error-bg);
+    border: 1px solid var(--error-border);
+    border-radius: 6px;
+}
+
+.provider-error p {
+    margin: 0 0 4px 0;
+    font-weight: 500;
+}
+
+.provider-error small {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.loading-providers {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+/* Enhanced form styling */
+.form-section {
+    margin-bottom: 24px;
+}
+
+.form-section:last-child {
+    margin-bottom: 0;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: var(--text-color);
+    font-size: 14px;
+}
+
+.form-help {
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+/* Loading states for buttons */
+.btn.loading {
+    position: relative;
+    color: transparent !important;
+    cursor: not-allowed;
+}
+
+.btn.loading .btn-spinner {
+    display: inline-block !important;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.btn-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid transparent;
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* PDF Preview enhancements */
+.pdf-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 400px;
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    background: var(--surface-color);
+    color: var(--text-muted);
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.pdf-placeholder.loading {
+    border-color: var(--primary-color);
+    background: var(--primary-color-alpha);
+}
+
+.placeholder-content {
+    max-width: 300px;
+    padding: 20px;
+}
+
+.placeholder-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.placeholder-content p {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+.placeholder-content small {
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+/* Loading animation for placeholder */
+.placeholder-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.placeholder-loading .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border-color);
+    border-top: 3px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Toast improvements */
+.toast {
+    position: relative;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    animation: slideIn 0.3s ease-out;
+}
+
+.toast.success {
+    background: var(--success-color, #10b981);
+}
+
+.toast.error {
+    background: var(--error-color, #ef4444);
+}
+
+.toast.warning {
+    background: var(--warning-color, #f59e0b);
+}
+
+.toast.info {
+    background: var(--info-color, #3b82f6);
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .provider-selection {
+        padding: 8px;
+        gap: 6px;
+    }
+    
+    .provider-option {
+        padding: 8px 10px;
+    }
+    
+    .provider-name {
+        font-size: 13px;
+    }
+}
+
+/* Dark mode enhancements */
+[data-theme="dark"] .provider-option {
+    background: var(--surface-color);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .provider-option:hover {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: var(--primary-color);
+}
+
+/* Focus states for accessibility */
+.provider-option:focus-within {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+.provider-option input[type="radio"]:focus {
+    outline: none;
+}
+
+/* Animation for provider loading */
+.loading-providers::after {
+    content: '';
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin-left: 8px;
+    border: 2px solid var(--border-color);
+    border-top: 2px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}

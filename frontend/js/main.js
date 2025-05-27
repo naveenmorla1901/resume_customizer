@@ -1,6 +1,8 @@
-// frontend/js/main.js - Main Application Logic
+// frontend/js/main.js - Updated with AI provider support and better PDF handling
 
 import apiClient, { FileHandler } from './api.js';
+import { Customizer } from './components/customizer.js';
+import { PDFViewer } from './components/pdfViewer.js';
 
 class ResumeCustomizerApp {
     constructor() {
@@ -8,6 +10,10 @@ class ResumeCustomizerApp {
         this.resumes = [];
         this.selectedResume = null;
         this.tempResumeId = null;
+        
+        // Initialize components
+        this.pdfViewer = new PDFViewer();
+        this.customizer = null; // Will be initialized after DOM is ready
         
         this.init();
     }
@@ -22,12 +28,21 @@ class ResumeCustomizerApp {
         try {
             await this.loadCurrentUser();
             await this.loadResumes();
+            this.initializeComponents();
             this.bindEvents();
             this.updateUI();
         } catch (error) {
             console.error('Failed to initialize app:', error);
             this.showToast('Failed to load application. Please refresh the page.', 'error');
         }
+    }
+
+    initializeComponents() {
+        // Initialize customizer after DOM is ready
+        this.customizer = new Customizer(apiClient, this.pdfViewer);
+        
+        // Make app instance available globally for components
+        window.app = this;
     }
 
     async loadCurrentUser() {
@@ -45,7 +60,7 @@ class ResumeCustomizerApp {
             this.resumes = await apiClient.getResumes();
             this.renderResumeList();
             
-            // Select first resume if available
+            // Select first resume if available and none is selected
             if (this.resumes.length > 0 && !this.selectedResume) {
                 this.selectResume(this.resumes[0]);
             }
@@ -82,25 +97,6 @@ class ResumeCustomizerApp {
         document.getElementById('addResumeForm')?.addEventListener('submit', (e) => {
             e.preventDefault();
             this.handleAddResume(e);
-        });
-
-        // Customization events
-        document.getElementById('customizationForm')?.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleCustomization(e);
-        });
-
-        document.getElementById('modificationPercentage')?.addEventListener('input', (e) => {
-            this.updatePercentageDisplay(e.target.value);
-        });
-
-        // Preview events
-        document.getElementById('downloadBtn')?.addEventListener('click', () => {
-            this.handleDownload();
-        });
-
-        document.getElementById('saveCustomizedBtn')?.addEventListener('click', () => {
-            this.handleSaveCustomized();
         });
 
         // Modal overlay click to close
@@ -217,35 +213,18 @@ class ResumeCustomizerApp {
 
     async loadResumePreview(resumeId) {
         try {
+            console.log('Loading PDF preview for resume:', resumeId);
+            this.pdfViewer.showLoading('Loading resume preview...');
+            
             const response = await apiClient.downloadResumePDF(resumeId);
             const blob = await response.blob();
-            const pdfUrl = URL.createObjectURL(blob);
             
-            this.showPDFPreview(pdfUrl);
+            this.pdfViewer.showPDF(blob, `${this.selectedResume.name}.pdf`);
+            console.log('PDF preview loaded successfully');
         } catch (error) {
             console.error('Failed to load resume preview:', error);
-            this.showPDFPlaceholder();
-        }
-    }
-
-    showPDFPreview(pdfUrl) {
-        const pdfPreview = document.getElementById('pdfPreview');
-        const pdfPlaceholder = document.getElementById('pdfPlaceholder');
-        
-        if (pdfPreview && pdfPlaceholder) {
-            pdfPreview.src = pdfUrl;
-            pdfPreview.classList.remove('hidden');
-            pdfPlaceholder.classList.add('hidden');
-        }
-    }
-
-    showPDFPlaceholder() {
-        const pdfPreview = document.getElementById('pdfPreview');
-        const pdfPlaceholder = document.getElementById('pdfPlaceholder');
-        
-        if (pdfPreview && pdfPlaceholder) {
-            pdfPreview.classList.add('hidden');
-            pdfPlaceholder.classList.remove('hidden');
+            this.pdfViewer.showPlaceholder();
+            this.showToast('Failed to load PDF preview', 'warning');
         }
     }
 
@@ -287,7 +266,7 @@ class ResumeCustomizerApp {
         }
 
         const saveBtn = document.getElementById('saveResumeBtn');
-        this.setButtonLoading(saveBtn, true);
+        this.setButtonLoading(saveBtn, true, 'Saving...');
 
         try {
             await apiClient.createResume(resumeData);
@@ -298,7 +277,7 @@ class ResumeCustomizerApp {
             console.error('Failed to create resume:', error);
             this.showToast('Failed to create resume. Please check your LaTeX code.', 'error');
         } finally {
-            this.setButtonLoading(saveBtn, false);
+            this.setButtonLoading(saveBtn, false, 'Save Resume');
         }
     }
 
@@ -325,112 +304,6 @@ class ResumeCustomizerApp {
         return true;
     }
 
-    async handleCustomization(event) {
-        if (!this.selectedResume) {
-            this.showToast('Please select a resume first', 'error');
-            return;
-        }
-
-        const form = event.target;
-        const formData = new FormData(form);
-        
-        const jobDescription = formData.get('jobDescription')?.trim();
-        const sections = Array.from(form.querySelectorAll('input[name="sections"]:checked'))
-            .map(input => input.value);
-        const modificationPercentage = parseInt(formData.get('modificationPercentage') || '30');
-
-        if (!this.validateCustomizationData(jobDescription, sections)) {
-            return;
-        }
-
-        const customizationData = {
-            resume_id: this.selectedResume.id,
-            job_description: jobDescription,
-            sections_to_modify: sections,
-            modification_percentage: modificationPercentage
-        };
-
-        const generateBtn = document.getElementById('generateBtn');
-        this.setButtonLoading(generateBtn, true, 'Generating...');
-
-        try {
-            const response = await apiClient.customizeResume(customizationData);
-            this.tempResumeId = response.temp_resume_id;
-            
-            if (response.pdf_url) {
-                this.showPDFPreview(response.pdf_url);
-            }
-            
-            this.showPreviewActions();
-            this.showToast('Resume customized successfully!', 'success');
-            
-            // Reload resumes to show the temp resume
-            await this.loadResumes();
-            
-        } catch (error) {
-            console.error('Failed to customize resume:', error);
-            this.showToast('Failed to customize resume. Please try again.', 'error');
-        } finally {
-            this.setButtonLoading(generateBtn, false, 'Generate Customized Resume');
-        }
-    }
-
-    validateCustomizationData(jobDescription, sections) {
-        if (!jobDescription) {
-            this.showToast('Please enter a job description', 'error');
-            return false;
-        }
-
-        if (sections.length === 0) {
-            this.showToast('Please select at least one section to customize', 'error');
-            return false;
-        }
-
-        return true;
-    }
-
-    showPreviewActions() {
-        document.getElementById('downloadBtn')?.classList.remove('hidden');
-        document.getElementById('saveCustomizedBtn')?.classList.remove('hidden');
-    }
-
-    async handleDownload() {
-        if (!this.tempResumeId) {
-            this.showToast('No customized resume to download', 'error');
-            return;
-        }
-
-        try {
-            const response = await apiClient.previewCustomizedResume(this.tempResumeId);
-            await FileHandler.downloadPDF(response, `${this.selectedResume.name}_customized.pdf`);
-            this.showToast('Resume downloaded successfully!', 'success');
-        } catch (error) {
-            console.error('Failed to download resume:', error);
-            this.showToast('Failed to download resume', 'error');
-        }
-    }
-
-    async handleSaveCustomized() {
-        if (!this.tempResumeId) {
-            this.showToast('No customized resume to save', 'error');
-            return;
-        }
-
-        const saveBtn = document.getElementById('saveCustomizedBtn');
-        this.setButtonLoading(saveBtn, true);
-
-        try {
-            await apiClient.saveCustomizedResume(this.tempResumeId);
-            this.showToast('Customized resume saved successfully!', 'success');
-            await this.loadResumes();
-        } catch (error) {
-            console.error('Failed to save customized resume:', error);
-            this.showToast('Failed to save customized resume', 'error');
-        } finally {
-            this.setButtonLoading(saveBtn, false);
-        }
-    }
-
     async handleLogout() {
         try {
             await apiClient.logout();
@@ -450,33 +323,31 @@ class ResumeCustomizerApp {
         }
     }
 
-    updatePercentageDisplay(value) {
-        const percentageValueElement = document.getElementById('percentageValue');
-        if (percentageValueElement) {
-            percentageValueElement.textContent = `${value}%`;
-        }
-    }
-
     setButtonLoading(button, isLoading, loadingText = null) {
         if (!button) return;
 
-        const btnText = button.querySelector('.btn-text');
+        const btnText = button.querySelector('.btn-text') || button;
         const btnSpinner = button.querySelector('.btn-spinner');
 
         if (isLoading) {
             button.disabled = true;
-            if (btnText && loadingText) btnText.textContent = loadingText;
+            button.classList.add('loading');
+            if (loadingText) btnText.textContent = loadingText;
             if (btnSpinner) btnSpinner.classList.remove('hidden');
         } else {
             button.disabled = false;
-            if (btnText && loadingText) btnText.textContent = loadingText;
+            button.classList.remove('loading');
+            if (loadingText) btnText.textContent = loadingText;
             if (btnSpinner) btnSpinner.classList.add('hidden');
         }
     }
 
     showToast(message, type = 'success') {
         const toastContainer = document.getElementById('toastContainer');
-        if (!toastContainer) return;
+        if (!toastContainer) {
+            console.log(`[${type.toUpperCase()}] ${message}`);
+            return;
+        }
 
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
@@ -486,7 +357,9 @@ class ResumeCustomizerApp {
 
         // Auto remove after 5 seconds
         setTimeout(() => {
-            toast.remove();
+            if (toast.parentNode) {
+                toast.remove();
+            }
         }, 5000);
     }
 
