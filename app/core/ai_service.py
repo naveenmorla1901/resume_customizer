@@ -238,11 +238,14 @@ class DeepSeekProvider(AIProvider):
         self.endpoint = "https://api.deepseek.com/chat/completions"
         
         # Validate API key format
-        if not api_key or not api_key.startswith('sk-'):
-            logger.warning(f"DeepSeek API key format may be incorrect. Expected format: sk-... but got: {api_key[:10] if api_key else 'None'}...")
+        if not api_key or not api_key.startswith('sk-') or len(api_key) < 30:
+            logger.error(f"DeepSeek API key format is incorrect. Expected format: sk-... (30+ chars) but got: {api_key[:10] if api_key else 'None'}... (length: {len(api_key) if api_key else 0})")
+            logger.error("Please get a proper API key from https://platform.deepseek.com/api_keys")
+            raise Exception(f"Invalid DeepSeek API key format. Expected 30+ characters, got {len(api_key) if api_key else 0}.")
         
         logger.info(f"DeepSeek provider initialized - endpoint: {self.endpoint}")
-        logger.info(f"DeepSeek API key format: {'Valid (sk-...)' if api_key and api_key.startswith('sk-') else 'Invalid format'}")
+        logger.info(f"DeepSeek API key format: {'Valid (sk-...)' if api_key and api_key.startswith('sk-') and len(api_key) >= 30 else 'Invalid format'}")
+        logger.info(f"DeepSeek API key length: {len(api_key)} characters (minimum 30 required)")
         
     def is_available(self) -> bool:
         """Check if DeepSeek provider is available"""

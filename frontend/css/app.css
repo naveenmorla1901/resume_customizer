@@ -200,7 +200,7 @@
 
 .interface-layout {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 2fr; /* 33% form, 67% PDF preview - more space for PDF */
     height: 100%;
     gap: 1px;
     background-color: var(--border-color);
@@ -246,13 +246,13 @@
 
 /* Customization Form */
 .customization-form {
-    padding: var(--space-lg);
+    padding: var(--space-md); /* Reduced padding to save space */
     overflow-y: auto;
     flex: 1;
 }
 
 .form-section {
-    margin-bottom: var(--space-xl);
+    margin-bottom: var(--space-lg); /* Reduced spacing between form sections */
 }
 
 .form-section label {

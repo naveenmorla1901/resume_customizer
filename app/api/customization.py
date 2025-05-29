@@ -122,11 +122,13 @@ async def customize_resume(
         if temp_resume_response.data:
             # Update existing temp resume
             temp_resume_id = temp_resume_response.data[0]["id"]
-            logger.info(f"Updating existing temp resume: {temp_resume_id}")
+            old_name = temp_resume_response.data[0]["name"]
+            logger.info(f"✅ REPLACING existing temp resume '{old_name}' (ID: {temp_resume_id}) with new customization")
             supabase.table("resumes").update({
                 "name": temp_resume_name,
                 "latex_content": customized_latex
             }).eq("id", temp_resume_id).execute()
+            logger.info(f"✅ Temp resume replaced successfully - old content discarded, new customization saved")
         else:
             # Create new temp resume
             logger.info("Creating new temp resume")
