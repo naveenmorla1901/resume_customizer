@@ -20,6 +20,8 @@ class AuthHandler {
     }
 
     bindEvents() {
+        console.log('Setting up auth event listeners...');
+        
         // Form switching
         document.getElementById('showSignup')?.addEventListener('click', (e) => {
             e.preventDefault();
@@ -31,16 +33,18 @@ class AuthHandler {
             this.switchToLogin();
         });
 
-        // Form submissions
-        document.getElementById('loginFormElement')?.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleLogin(e);
-        });
+        // Form submissions - using the correct IDs from HTML
+        const loginForm = document.getElementById('loginForm');
+        if (loginForm) {
+            console.log('Login form found, setting up handlers');
+            loginForm.addEventListener('submit', (e) => this.handleLogin(e));
+        }
 
-        document.getElementById('signupFormElement')?.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleSignup(e);
-        });
+        const signupForm = document.getElementById('signupForm');
+        if (signupForm) {
+            console.log('Signup form found, setting up handlers');
+            signupForm.addEventListener('submit', (e) => this.handleSignup(e));
+        }
 
         // Error dismissal
         document.getElementById('dismissError')?.addEventListener('click', () => {
@@ -56,14 +60,6 @@ class AuthHandler {
     }
 
     setupFormValidation() {
-        // Real-time password validation
-        const signupPassword = document.getElementById('signupPassword');
-        if (signupPassword) {
-            signupPassword.addEventListener('input', (e) => {
-                this.validatePassword(e.target);
-            });
-        }
-
         // Email validation
         const emailInputs = document.querySelectorAll('input[type="email"]');
         emailInputs.forEach(input => {
@@ -84,66 +80,52 @@ class AuthHandler {
         }
     }
 
-    validatePassword(input) {
-        const password = input.value;
-        const minLength = 8;
-        
-        if (password.length > 0 && password.length < minLength) {
-            input.setCustomValidity(`Password must be at least ${minLength} characters long`);
-        } else {
-            input.setCustomValidity('');
-        }
-    }
-
     switchToSignup() {
         if (this.currentForm === 'signup') return;
         
-        const loginForm = document.getElementById('loginForm');
-        const signupForm = document.getElementById('signupForm');
+        const loginCard = document.getElementById('loginCard');
+        const signupCard = document.getElementById('signupCard');
         
-        this.animateFormSwitch(loginForm, signupForm);
+        if (loginCard && signupCard) {
+            loginCard.style.display = 'none';
+            signupCard.style.display = 'block';
+            signupCard.classList.remove('hidden');
+        }
+        
         this.currentForm = 'signup';
         this.hideError();
         
         // Focus first input
         setTimeout(() => {
-            document.getElementById('signupName')?.focus();
-        }, 300);
+            document.getElementById('full_name')?.focus();
+        }, 100);
     }
 
     switchToLogin() {
         if (this.currentForm === 'login') return;
         
-        const loginForm = document.getElementById('loginForm');
-        const signupForm = document.getElementById('signupForm');
+        const loginCard = document.getElementById('loginCard');
+        const signupCard = document.getElementById('signupCard');
         
-        this.animateFormSwitch(signupForm, loginForm);
+        if (loginCard && signupCard) {
+            signupCard.style.display = 'none';
+            signupCard.classList.add('hidden');
+            loginCard.style.display = 'block';
+        }
+        
         this.currentForm = 'login';
         this.hideError();
         
         // Focus first input
         setTimeout(() => {
-            document.getElementById('loginEmail')?.focus();
-        }, 300);
-    }
-
-    animateFormSwitch(hideForm, showForm) {
-        hideForm.classList.add('slide-out');
-        
-        setTimeout(() => {
-            hideForm.classList.add('hidden');
-            hideForm.classList.remove('slide-out');
-            
-            showForm.classList.remove('hidden');
-            showForm.classList.add('slide-in');
-            
-            setTimeout(() => {
-                showForm.classList.remove('slide-in');
-            }, 300);
-        }, 300);
+            document.getElementById('email')?.focus();
+        }, 100);
     }
 
     async handleLogin(event) {
+        event.preventDefault(); // Prevent form submission
+        console.log('Login form submitted');
+
         const form = event.target;
         const formData = new FormData(form);
         const credentials = {
@@ -151,14 +133,27 @@ class AuthHandler {
             password: formData.get('password')
         };
 
+        console.log('Login attempt for email:', credentials.email);
+
         if (!this.validateLoginForm(credentials)) {
             return;
         }
 
-        this.showLoading('Signing you in...');
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalText = submitButton.textContent;
 
         try {
+            // Update button state
+            submitButton.disabled = true;
+            submitButton.textContent = 'Signing in...';
+            this.hideError();
+
+            console.log('Making login API call...');
+            
             const response = await apiClient.login(credentials);
+            
+            console.log('Login response:', response);
+
             this.showSuccess('Login successful! Redirecting...');
             
             // Small delay for UX
@@ -167,12 +162,19 @@ class AuthHandler {
             }, 1000);
             
         } catch (error) {
-            this.hideLoading();
+            console.error('Login error:', error);
             this.showError(this.getErrorMessage(error));
+        } finally {
+            // Reset button state
+            submitButton.disabled = false;
+            submitButton.textContent = originalText;
         }
     }
 
     async handleSignup(event) {
+        event.preventDefault(); // Prevent form submission
+        console.log('Signup form submitted');
+
         const form = event.target;
         const formData = new FormData(form);
         const userData = {
@@ -181,14 +183,27 @@ class AuthHandler {
             password: formData.get('password')
         };
 
+        console.log('Signup attempt for email:', userData.email);
+
         if (!this.validateSignupForm(userData)) {
             return;
         }
 
-        this.showLoading('Creating your account...');
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalText = submitButton.textContent;
 
         try {
+            // Update button state
+            submitButton.disabled = true;
+            submitButton.textContent = 'Creating account...';
+            this.hideError();
+
+            console.log('Making signup API call...');
+            
             const response = await apiClient.signup(userData);
+            
+            console.log('Signup response:', response);
+
             this.showSuccess('Account created successfully! Redirecting...');
             
             // Small delay for UX
@@ -197,8 +212,12 @@ class AuthHandler {
             }, 1000);
             
         } catch (error) {
-            this.hideLoading();
+            console.error('Signup error:', error);
             this.showError(this.getErrorMessage(error));
+        } finally {
+            // Reset button state
+            submitButton.disabled = false;
+            submitButton.textContent = originalText;
         }
     }
 
@@ -240,40 +259,16 @@ class AuthHandler {
         return true;
     }
 
-    showLoading(message = 'Please wait...') {
-        const loginForm = document.getElementById('loginForm');
-        const signupForm = document.getElementById('signupForm');
-        const loadingSpinner = document.getElementById('loadingSpinner');
-        const loadingText = loadingSpinner.querySelector('p');
-
-        loginForm.classList.add('hidden');
-        signupForm.classList.add('hidden');
-        loadingSpinner.classList.remove('hidden');
-        
-        if (loadingText) {
-            loadingText.textContent = message;
-        }
-    }
-
-    hideLoading() {
-        const loadingSpinner = document.getElementById('loadingSpinner');
-        loadingSpinner.classList.add('hidden');
-        
-        // Show appropriate form
-        if (this.currentForm === 'login') {
-            document.getElementById('loginForm').classList.remove('hidden');
-        } else {
-            document.getElementById('signupForm').classList.remove('hidden');
-        }
-    }
-
     showError(message) {
+        console.error('Auth error:', message);
+        
         const errorElement = document.getElementById('errorMessage');
         const errorText = document.getElementById('errorText');
         
         if (errorElement && errorText) {
             errorText.textContent = message;
             errorElement.classList.remove('hidden');
+            errorElement.style.display = 'block';
         }
     }
 
@@ -281,73 +276,69 @@ class AuthHandler {
         const errorElement = document.getElementById('errorMessage');
         if (errorElement) {
             errorElement.classList.add('hidden');
+            errorElement.style.display = 'none';
         }
     }
 
     showSuccess(message) {
-        // Create a temporary success message
-        const successElement = document.createElement('div');
-        successElement.className = 'success-message';
-        successElement.innerHTML = `<p>${message}</p>`;
+        console.log('Auth success:', message);
         
-        const container = document.querySelector('.auth-container');
-        container.appendChild(successElement);
+        // Create a temporary success message or use existing error element with different styling
+        const errorElement = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
         
-        // Remove after animation
-        setTimeout(() => {
-            successElement.remove();
-        }, 3000);
+        if (errorElement && errorText) {
+            errorText.textContent = message;
+            errorElement.classList.remove('hidden');
+            errorElement.style.display = 'block';
+            errorElement.style.backgroundColor = '#d4edda';
+            errorElement.style.borderColor = '#c3e6cb';
+            errorElement.style.color = '#155724';
+        }
     }
 
     getErrorMessage(error) {
-        if (error.message.includes('Invalid email or password')) {
+        const message = error.message || error.toString();
+        
+        if (message.includes('Invalid email or password') || message.includes('Invalid credentials')) {
             return 'Invalid email or password. Please try again.';
         }
         
-        if (error.message.includes('already exists') || error.message.includes('already registered')) {
+        if (message.includes('already exists') || message.includes('already registered')) {
             return 'An account with this email already exists. Please try logging in instead.';
         }
         
-        if (error.message.includes('Network')) {
+        if (message.includes('Network') || message.includes('fetch')) {
             return 'Network error. Please check your connection and try again.';
         }
         
-        return error.message || 'An unexpected error occurred. Please try again.';
+        if (message.includes('422')) {
+            return 'Please check your input and try again.';
+        }
+        
+        return message || 'An unexpected error occurred. Please try again.';
     }
 
     redirectToApp() {
-        window.location.href = '/app';
-    }
-}
-
-// Toast notification utility
-class Toast {
-    static show(message, type = 'success', duration = 3000) {
-        const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
-        toast.textContent = message;
-        
-        document.body.appendChild(toast);
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
-            toast.style.transform = 'translateX(0)';
-            toast.style.opacity = '1';
-        });
-        
-        // Remove after duration
-        setTimeout(() => {
-            toast.style.transform = 'translateX(100%)';
-            toast.style.opacity = '0';
-            setTimeout(() => toast.remove(), 300);
-        }, duration);
+        // Redirect to the correct resume customizer app URL
+        window.location.href = '/resume-customizer/app';
     }
 }
 
 // Initialize auth handler when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM loaded, initializing AuthHandler...');
     new AuthHandler();
 });
 
-// Make Toast available globally
-window.Toast = Toast;
+// Also initialize immediately if DOM is already loaded
+if (document.readyState === 'loading') {
+    // DOM is still loading, wait for DOMContentLoaded
+} else {
+    // DOM is already loaded
+    console.log('DOM already loaded, initializing AuthHandler immediately...');
+    new AuthHandler();
+}
+
+// Export for external use
+export default AuthHandler;

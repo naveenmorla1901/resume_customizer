@@ -1,0 +1,21 @@
+-- Logs begin at Fri 2025-05-02 10:39:55 UTC, end at Thu 2025-05-29 02:46:11 UTC. --
+May 29 02:45:52 job-tracker-instance uvicorn[2053987]: INFO:     Application shutdown complete.
+May 29 02:45:53 job-tracker-instance systemd[1]: [0;1;39m[0;1;31m[0;1;39mresume-customizer.service: Main process exited, code=exited, status=1/FAILURE[0m
+May 29 02:45:53 job-tracker-instance systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mresume-customizer.service: Failed with result 'exit-code'.[0m
+May 29 02:46:03 job-tracker-instance systemd[1]: resume-customizer.service: Scheduled restart job, restart counter is at 17.
+May 29 02:46:03 job-tracker-instance systemd[1]: Stopped Resume Customizer FastAPI Application.
+May 29 02:46:03 job-tracker-instance systemd[1]: Starting Resume Customizer FastAPI Application...
+May 29 02:46:03 job-tracker-instance systemd[1]: Started Resume Customizer FastAPI Application.
+May 29 02:46:04 job-tracker-instance uvicorn[2054004]: INFO:     Started server process [2054004]
+May 29 02:46:04 job-tracker-instance uvicorn[2054004]: INFO:     Waiting for application startup.
+May 29 02:46:04 job-tracker-instance uvicorn[2054004]: INFO:app.main:🚀 Starting Resume Customizer V2.1
+May 29 02:46:04 job-tracker-instance uvicorn[2054004]: INFO:app.main:✅ AI Service initialized with providers: ['claude', 'gemini', 'deepseek']
+May 29 02:46:04 job-tracker-instance uvicorn[2054004]: INFO:app.main:✅ Startup complete
+May 29 02:46:04 job-tracker-instance uvicorn[2054004]: INFO:     Application startup complete.
+May 29 02:46:04 job-tracker-instance uvicorn[2054004]: ERROR:    [Errno 98] error while attempting to bind on address ('0.0.0.0', 8002): address already in use
+May 29 02:46:04 job-tracker-instance uvicorn[2054004]: INFO:     Waiting for application shutdown.
+May 29 02:46:04 job-tracker-instance uvicorn[2054004]: INFO:app.main:👋 Shutting down Resume Customizer
+May 29 02:46:04 job-tracker-instance uvicorn[2054004]: INFO:app.main:✅ Shutdown complete
+May 29 02:46:04 job-tracker-instance uvicorn[2054004]: INFO:     Application shutdown complete.
+May 29 02:46:04 job-tracker-instance systemd[1]: [0;1;39m[0;1;31m[0;1;39mresume-customizer.service: Main process exited, code=exited, status=1/FAILURE[0m
+May 29 02:46:04 job-tracker-instance systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mresume-customizer.service: Failed with result 'exit-code'.[0m

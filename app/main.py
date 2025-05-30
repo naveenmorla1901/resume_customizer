@@ -79,58 +79,92 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routes
+# ========================================
+# STATIC FILE CONFIGURATION (FIXED)
+# ========================================
+
+# Get the frontend directory path
+frontend_dir = Path(__file__).parent.parent / "frontend"
+
+# Only mount directories that actually exist
+css_dir = frontend_dir / "css"
+js_dir = frontend_dir / "js"
+images_dir = frontend_dir / "assets" / "images"
+
+if css_dir.exists():
+    app.mount("/assets/css", StaticFiles(directory=str(css_dir)), name="css")
+    logger.info(f"✅ Mounted CSS directory: {css_dir}")
+
+if js_dir.exists():
+    app.mount("/assets/js", StaticFiles(directory=str(js_dir)), name="js")
+    logger.info(f"✅ Mounted JS directory: {js_dir}")
+
+if images_dir.exists():
+    app.mount("/assets/images", StaticFiles(directory=str(images_dir)), name="images")
+    logger.info(f"✅ Mounted images directory: {images_dir}")
+else:
+    logger.info(f"⚠️ Images directory doesn't exist: {images_dir}")
+
+# Mount entire frontend for any other static files
+if frontend_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(frontend_dir)), name="static")
+    logger.info(f"✅ Mounted static directory: {frontend_dir}")
+
+# ========================================
+# HTML ROUTES
+# ========================================
+
+@app.get("/")
+async def root():
+    """Serve the login page"""
+    login_file = frontend_dir / "login.html"
+    if login_file.exists():
+        return FileResponse(str(login_file))
+    return {"message": "Resume Customizer API", "status": "running"}
+
+@app.get("/login")
+async def login_page():
+    """Serve the login page"""
+    login_file = frontend_dir / "login.html"
+    if login_file.exists():
+        return FileResponse(str(login_file))
+    return {"message": "Login page not found"}
+
+@app.get("/app")
+async def main_app():
+    """Serve the main application page"""
+    app_file = frontend_dir / "index.html"
+    if app_file.exists():
+        return FileResponse(str(app_file))
+    return {"message": "App page not found"}
+
+# ========================================
+# API ROUTES
+# ========================================
+
+# Include API routers
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(resumes.router, prefix="/api/resumes", tags=["resumes"])
 app.include_router(customization.router, prefix="/api/customize", tags=["customization"])
 
-# Serve static files (for PDF downloads and temp files)
-app.mount("/static", StaticFiles(directory="temp_files"), name="static")
-
-# Serve frontend static files (CSS, JS, images)
-if Path("frontend").exists():
-    app.mount("/assets", StaticFiles(directory="frontend"), name="frontend")
-
 # Health check endpoint
 @app.get("/api/health")
 async def health_check():
-    return {"status": "healthy", "service": settings.app_name}
+    return {"status": "healthy", "service": "Resume Customizer"}
 
-# Root redirect to app
-@app.get("/")
-async def root():
-    return FileResponse("frontend/login.html") if Path("frontend/login.html").exists() else {"message": "Resume Customizer API running - visit /docs for API documentation"}
-
-# Serve main app
-@app.get("/app")
-async def serve_app():
-    """Serve the main application"""
-    if Path("frontend/index.html").exists():
-        return FileResponse("frontend/index.html")
-    return {"message": "Frontend not found - visit /docs for API documentation"}
-
-# Serve login page
-@app.get("/login")
-async def serve_login():
-    """Serve the login page"""
-    if Path("frontend/login.html").exists():
-        return FileResponse("frontend/login.html")
-    return {"message": "Login page not found"}
-
-# Serve CSS files
+# Alternative CSS/JS serving (fallback if mounted static files don't work)
 @app.get("/css/{file_path:path}")
 async def serve_css(file_path: str):
-    """Serve CSS files"""
-    css_file = Path("frontend/css") / file_path
+    """Serve CSS files as fallback"""
+    css_file = frontend_dir / "css" / file_path
     if css_file.exists():
         return FileResponse(css_file, media_type="text/css")
     return {"error": "CSS file not found"}, 404
 
-# Serve JS files
 @app.get("/js/{file_path:path}")
 async def serve_js(file_path: str):
-    """Serve JavaScript files"""
-    js_file = Path("frontend/js") / file_path
+    """Serve JavaScript files as fallback"""
+    js_file = frontend_dir / "js" / file_path
     if js_file.exists():
         return FileResponse(js_file, media_type="application/javascript")
     return {"error": "JS file not found"}, 404

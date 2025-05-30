@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Resume Customizer - Login</title>
-    <link rel="stylesheet" href="/assets/css/main.css">
-    <link rel="stylesheet" href="/assets/css/components.css">
+    <link rel="stylesheet" href="/static-resume/css/main.css">
+    <link rel="stylesheet" href="/static-resume/css/components.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -18,16 +18,16 @@
         </div>
 
         <!-- Login Form -->
-        <div class="auth-form-container" id="loginForm">
+        <div class="auth-form-container" id="loginCard">
             <h2>Welcome Back</h2>
-            <form id="loginFormElement" class="auth-form">
+            <form id="loginForm" class="auth-form">
                 <div class="form-group">
-                    <label for="loginEmail">Email Address</label>
-                    <input type="email" id="loginEmail" name="email" required>
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" required>
                 </div>
                 <div class="form-group">
-                    <label for="loginPassword">Password</label>
-                    <input type="password" id="loginPassword" name="password" required>
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
                 </div>
                 <button type="submit" class="btn btn-primary" id="loginBtn">
                     Sign In
@@ -41,20 +41,20 @@
         </div>
 
         <!-- Signup Form -->
-        <div class="auth-form-container hidden" id="signupForm">
+        <div class="auth-form-container hidden" id="signupCard">
             <h2>Create Account</h2>
-            <form id="signupFormElement" class="auth-form">
+            <form id="signupForm" class="auth-form">
                 <div class="form-group">
-                    <label for="signupName">Full Name</label>
-                    <input type="text" id="signupName" name="full_name" required>
+                    <label for="full_name">Full Name</label>
+                    <input type="text" id="full_name" name="full_name" required>
                 </div>
                 <div class="form-group">
-                    <label for="signupEmail">Email Address</label>
-                    <input type="email" id="signupEmail" name="email" required>
+                    <label for="signup_email">Email Address</label>
+                    <input type="email" id="signup_email" name="email" required>
                 </div>
                 <div class="form-group">
-                    <label for="signupPassword">Password</label>
-                    <input type="password" id="signupPassword" name="password" required minlength="8">
+                    <label for="signup_password">Password</label>
+                    <input type="password" id="signup_password" name="password" required minlength="8">
                     <small>At least 8 characters</small>
                 </div>
                 <button type="submit" class="btn btn-primary" id="signupBtn">
@@ -81,6 +81,6 @@
         </div>
     </div>
 
-    <script type="module" src="/assets/js/auth.js"></script>
+    <script type="module" src="/static-resume/js/auth.js?v=3"></script>
 </body>
 </html>
