@@ -34,9 +34,15 @@ function projectTitleHtml(project) {
   return `<div class="project-title"><span class="project-name">${escapeHtml(project.name || '')}</span>${project.tech ? `<span class="project-tech"> | ${escapeHtml(project.tech)}</span>` : ''}</div>`;
 }
 
-function pageOne(data) {
+function layoutStyle(layout, pageNumber) {
+  const page = layout?.[`page${pageNumber}`];
+  if (!page) return '';
+  return ` style="--fill-line:${Number(page.line) || 0}pt;--fill-gap:${Number(page.gap) || 0}pt;--fill-small:${Number(page.small) || 0}pt"`;
+}
+
+function pageOne(data, layout) {
   const roles = data.experience || [];
-  return `<div class="resume-page" data-page="1"><div class="page-inner">
+  return `<div class="resume-page" data-page="1"${layoutStyle(layout, 1)}><div class="page-inner">
     <div class="resume-name">${escapeHtml(data.profile?.name || '')}</div>
     ${contactHtml(data.profile)}
     ${sectionTitle('PROFESSIONAL SUMMARY')}
@@ -46,12 +52,12 @@ function pageOne(data) {
   </div></div>`;
 }
 
-function pageTwo(data) {
+function pageTwo(data, layout) {
   const groups = data.skills || [];
   const edu = data.education || {};
   const projects = data.projects || [];
   const certs = data.certifications || [];
-  return `<div class="resume-page" data-page="2"><div class="page-inner">
+  return `<div class="resume-page" data-page="2"${layoutStyle(layout, 2)}><div class="page-inner">
     ${sectionTitle('PROJECTS', 'section-title-first')}
     ${projects.map((project) => `${projectTitleHtml(project)}${bulletsHtml(project.bullets)}`).join('')}
     ${sectionTitle('TECHNICAL SKILLS')}
@@ -70,36 +76,92 @@ function pageTwo(data) {
   </div></div>`;
 }
 
-export function renderResume(container, master, plan) {
+function pageHeight(page) {
+  const inner = page.querySelector('.page-inner');
+  if (!inner) return { available: 0, height: 0, overflow: 0 };
+  const available = inner.clientHeight || 0;
+  const last = inner.lastElementChild;
+  let height = 0;
+  if (last) {
+    const marginBottom = parseFloat(getComputedStyle(last).marginBottom) || 0;
+    // Use layout offsets instead of getBoundingClientRect: the preview is
+    // scaled down on narrow screens, and rects would return transformed
+    // pixels while clientHeight stays in CSS pixels.
+    height = last.offsetTop + last.offsetHeight + marginBottom - inner.offsetTop;
+  }
+  return { available, height, overflow: height - available };
+}
+
+const FILL_LIMITS = {
+  line: 0.62,
+  gap: 2.5,
+  small: 1.15,
+};
+
+function setPageFill(page, k = 0) {
+  const value = Math.max(0, Math.min(1, Number(k) || 0));
+  page.style.setProperty('--fill-line', `${(value * FILL_LIMITS.line).toFixed(3)}pt`);
+  page.style.setProperty('--fill-gap', `${(value * FILL_LIMITS.gap).toFixed(3)}pt`);
+  page.style.setProperty('--fill-small', `${(value * FILL_LIMITS.small).toFixed(3)}pt`);
+}
+
+/**
+ * Add a small, controlled amount of vertical breathing room so a page does
+ * not end with a large blank block. The binary search never consumes the full
+ * safety margin, so Word still has room for its slightly different metrics.
+ */
+export function applyResumeFill(container, opts = {}) {
+  const target = opts.target ?? 26; // px left above the bottom margin
+  const layout = {};
+  const pages = Array.from(container.querySelectorAll('.resume-page'));
+  for (const page of pages) {
+    const pageNumber = Number(page.dataset.page || 0);
+    setPageFill(page, 0);
+    const base = pageHeight(page);
+    const spare = base.available - base.height;
+    let best = 0;
+    if (spare > target + 4) {
+      let lo = 0;
+      let hi = 1;
+      for (let i = 0; i < 7; i += 1) {
+        const mid = (lo + hi) / 2;
+        setPageFill(page, mid);
+        const measured = pageHeight(page);
+        if (measured.available - measured.height >= target) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      best = lo;
+      setPageFill(page, best);
+    }
+    const final = pageHeight(page);
+    const consumedPt = Math.max(0, (final.height - base.height) / (96 / 72));
+    layout[`page${pageNumber}`] = {
+      line: Number((best * FILL_LIMITS.line).toFixed(3)),
+      gap: Number((best * FILL_LIMITS.gap).toFixed(3)),
+      small: Number((best * FILL_LIMITS.small).toFixed(3)),
+      extraPt: Number(consumedPt.toFixed(1)),
+      blankPx: Math.max(0, Math.round(final.available - final.height)),
+    };
+    page.dataset.fill = String(best.toFixed(3));
+  }
+  return { layout, measurement: measureResume(container) };
+}
+
+export function renderResume(container, master, plan, opts = {}) {
   const data = materializePlan(master, plan);
-  container.innerHTML = `<div class="resume-pages">${pageOne(data)}${pageTwo(data)}</div>`;
+  const layout = opts.includeLayout ? plan?.layout : null;
+  container.innerHTML = `<div class="resume-pages">${pageOne(data, layout)}${pageTwo(data, layout)}</div>`;
   return measureResume(container, data);
 }
 
 export function measureResume(container) {
-  const pages = Array.from(container.querySelectorAll('.resume-page')).map((page) => {
-    const inner = page.querySelector('.page-inner');
-    const available = inner?.clientHeight || 0;
-    // The inner element is exactly page-height, so scrollHeight always equals
-    // clientHeight even when the content is shorter or (worse) overflows.
-    // Measure the bottom of the last rendered block instead.
-    let height = 0;
-    if (inner) {
-      const innerTop = inner.getBoundingClientRect().top;
-      const last = inner.lastElementChild;
-      if (last) {
-        const lastStyle = getComputedStyle(last);
-        const marginBottom = parseFloat(lastStyle.marginBottom) || 0;
-        height = last.getBoundingClientRect().bottom + marginBottom - innerTop;
-      }
-    }
-    return {
-      page: Number(page.dataset.page || 0),
-      available,
-      height,
-      overflow: height - available,
-    };
-  });
+  const pages = Array.from(container.querySelectorAll('.resume-page')).map((page) => ({
+    page: Number(page.dataset.page || 0),
+    ...pageHeight(page),
+  }));
   const page1 = pages.find((p) => p.page === 1) || { overflow: 0 };
   const page2 = pages.find((p) => p.page === 2) || { overflow: 0 };
   return {
@@ -112,7 +174,7 @@ export function measureResume(container) {
 
 export function renderResumeHtml(master, plan) {
   const data = materializePlan(master, plan);
-  return `<div class="resume-pages">${pageOne(data)}${pageTwo(data)}</div>`;
+  return `<div class="resume-pages">${pageOne(data, data.layout)}${pageTwo(data, data.layout)}</div>`;
 }
 
 export function getPlainText(master, plan) {

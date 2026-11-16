@@ -194,6 +194,12 @@ textarea, input[type="text"], input[type="password"], input[type="email"], input
 textarea { resize: vertical; min-height: 150px; }
 textarea::placeholder, input::placeholder { color: #98a2b3; }
 .textarea-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; color: var(--muted); font-size: 11px; }
+.jd-url-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-bottom: 8px; }
+.jd-url-row input { min-width: 0; }
+.jd-url-status { margin: 0 0 8px; color: var(--good); }
+#missing-note { white-space: pre-line; }
+.check-line { display: flex; align-items: flex-start; gap: 8px; margin: 14px 0 8px; color: #344054; font-size: 12px; line-height: 1.45; cursor: pointer; }
+.check-line input { margin: 2px 0 0; flex: 0 0 auto; }
 .ai-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
 .switch { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
@@ -287,7 +293,7 @@ textarea::placeholder, input::placeholder { color: #98a2b3; }
   color: #1a1a1a;
   font-family: var(--resume-font);
   font-size: 9.5pt;
-  line-height: 11.15pt;
+  line-height: calc(11.15pt + var(--fill-line, 0pt));
   box-shadow: 0 2px 6px rgba(16, 24, 40, .12), 0 18px 42px rgba(16, 24, 40, .1);
   border-radius: 2px;
   overflow: hidden;
@@ -301,40 +307,41 @@ textarea::placeholder, input::placeholder { color: #98a2b3; }
   font-size: 20pt; line-height: 20pt; margin: 0 0 1.4pt;
 }
 .resume-contact {
-  text-align: center; font-size: 9.5pt; line-height: 11.1pt;
-  margin: 0 0 1.4pt; white-space: nowrap;
+  text-align: center; font-size: 9.5pt; line-height: calc(11.1pt + var(--fill-line, 0pt));
+  margin: 0 0 calc(1.4pt + var(--fill-small, 0pt)); white-space: nowrap;
 }
 .resume-contact a { color: var(--navy); text-decoration: underline; text-underline-offset: .6pt; }
 .contact-dot { display: inline-block; }
 .contact-sep { display: inline-block; margin: 0 5pt; }
 .section-title {
-  color: var(--navy); font-size: 11pt; font-weight: 700; line-height: 13pt;
-  margin: 6.5pt 0 2.2pt; padding-bottom: 1.1pt;
+  color: var(--navy); font-size: 11pt; font-weight: 700; line-height: calc(13pt + var(--fill-line, 0pt));
+  margin: calc(6.5pt + var(--fill-gap, 0pt)) 0 calc(2.2pt + var(--fill-small, 0pt));
+  padding-bottom: calc(1.1pt + var(--fill-small, 0pt));
   border-bottom: .75pt solid var(--navy);
   letter-spacing: .01em;
 }
 .section-title-first { margin-top: 0; }
-.resume-summary { margin: 2.75pt 0 1.75pt; text-align: justify; }
+.resume-summary { margin: calc(2.75pt + var(--fill-small, 0pt)) 0 calc(1.75pt + var(--fill-small, 0pt)); text-align: justify; }
 .job-title {
   display: flex; justify-content: space-between; align-items: baseline; gap: 12pt;
-  font-size: 10pt; font-weight: 700; line-height: 11.8pt;
-  margin: 5.4pt 0 .6pt;
+  font-size: 10pt; font-weight: 700; line-height: calc(11.8pt + var(--fill-line, 0pt));
+  margin: calc(5.4pt + var(--fill-gap, 0pt)) 0 calc(.6pt + var(--fill-small, 0pt));
 }
 .job-left { min-width: 0; }
 .job-dates { white-space: nowrap; font-weight: 700; }
 .resume-bullets { padding-left: 7pt; }
-.resume-bullet { display: flex; margin: .5pt 0; }
-.bullet-mark { flex: 0 0 11pt; font-size: 10pt; line-height: 11.15pt; }
+.resume-bullet { display: flex; margin: calc(.5pt + var(--fill-small, 0pt)) 0; }
+.bullet-mark { flex: 0 0 11pt; font-size: 10pt; line-height: inherit; }
 .bullet-text { flex: 1; min-width: 0; text-align: justify; }
 .bullet-text strong { font-weight: 700; }
-.project-title { font-size: 10pt; line-height: 11.8pt; margin: 4.4pt 0 .6pt; }
+.project-title { font-size: 10pt; line-height: calc(11.8pt + var(--fill-line, 0pt)); margin: calc(4.4pt + var(--fill-gap, 0pt)) 0 calc(.6pt + var(--fill-small, 0pt)); }
 .project-name { font-weight: 700; color: var(--navy); text-decoration: underline; text-underline-offset: .6pt; }
 .project-tech { font-style: italic; font-size: 9pt; }
 .resume-skills { margin: 0; }
-.skill-group { margin: 1.1pt 0; text-align: justify; }
-.education-title { margin-top: 4.5pt; margin-bottom: .4pt; }
-.education-degree { font-style: italic; margin-bottom: .4pt; }
-.education-coursework { font-size: 9pt; color: #555; margin-bottom: .4pt; text-align: justify; }
+.skill-group { margin: calc(1.1pt + var(--fill-small, 0pt)) 0; text-align: justify; }
+.education-title { margin-top: calc(4.5pt + var(--fill-gap, 0pt)); margin-bottom: calc(.4pt + var(--fill-small, 0pt)); }
+.education-degree { font-style: italic; margin-bottom: calc(.4pt + var(--fill-small, 0pt)); }
+.education-coursework { font-size: 9pt; color: #555; margin-bottom: calc(.4pt + var(--fill-small, 0pt)); text-align: justify; }
 
 /* ---------- Modals ---------- */
 .modal-backdrop {

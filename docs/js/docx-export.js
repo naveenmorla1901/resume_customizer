@@ -36,12 +36,13 @@ function runsFromMarked(TextRun, text, opts = {}) {
 
 function sectionHeading(docx, text, opts = {}) {
   const { Paragraph, TextRun, BorderStyle } = docx;
+  const extra = opts.extra || 0;
   return new Paragraph({
     pageBreakBefore: opts.pageBreakBefore ?? false,
     keepNext: true,
     spacing: {
-      before: opts.pageBreakBefore ? 0 : 130,
-      after: 44,
+      before: opts.pageBreakBefore ? 0 : 130 + extra,
+      after: 44 + extra,
     },
     border: {
       bottom: {
@@ -65,10 +66,11 @@ function sectionHeading(docx, text, opts = {}) {
 
 function bulletParagraph(docx, text, opts = {}) {
   const { Paragraph, TextRun } = docx;
+  const extra = opts.extra || 0;
   return new Paragraph({
     numbering: { reference: BULLET_REF, level: 0 },
     alignment: 'both',
-    spacing: { before: 10, after: 10 },
+    spacing: { before: 10 + extra, after: 10 + extra },
     children: runsFromMarked(TextRun, text, { size: 19 }),
   });
 }
@@ -76,10 +78,11 @@ function bulletParagraph(docx, text, opts = {}) {
 function titleWithDate(docx, leftRuns, dates, opts = {}) {
   const { Paragraph, TextRun } = docx;
   const size = opts.size ?? 20;
+  const extra = opts.extra || 0;
   return new Paragraph({
     keepNext: true,
     tabStops: [{ type: 'right', position: 9360 }],
-    spacing: { before: opts.before ?? 108, after: opts.after ?? 12 },
+    spacing: { before: (opts.before ?? 108) + extra, after: (opts.after ?? 12) + extra },
     children: [
       ...leftRuns,
       new TextRun({ children: ['\t'], font: FONT }),
@@ -123,17 +126,27 @@ function contactLine(docx, profile) {
   });
 }
 
-function skillsParagraph(docx, group) {
+function skillsParagraph(docx, group, opts = {}) {
   const { Paragraph, TextRun } = docx;
+  const extra = opts.extra || 0;
   const separator = group.label.toLowerCase() === 'cloud' ? ' • ' : ', ';
   return new Paragraph({
     alignment: 'both',
-    spacing: { before: 22, after: 22 },
+    spacing: { before: 22 + extra, after: 22 + extra },
     children: [
       new TextRun({ text: `${group.label}: `, bold: true, size: 19, font: FONT, color: BODY }),
       new TextRun({ text: (group.items || []).join(separator), size: 19, font: FONT, color: BODY }),
     ],
   });
+}
+
+function fillTwips(layout, page, paragraphCount) {
+  const extraPt = Number(layout?.[page]?.extraPt) || 0;
+  if (!extraPt || !paragraphCount) return 0;
+  // Word's Calibri metrics are taller than the preview. Use only a small,
+  // capped share of the measured fill so Word never gains a third page.
+  const totalPt = Math.min(12, extraPt * 0.25);
+  return Math.max(0, Math.round((totalPt / paragraphCount) * 20));
 }
 
 function buildNumbering(docx) {
@@ -165,6 +178,18 @@ export function buildResumeDocx(docx, master, tailored, opts = {}) {
   const data = tailored || master;
   const profile = master.profile;
   const children = [];
+  const layout = data.layout || {};
+  const pageOneParagraphs = 3
+    + (data.experience || []).length
+    + (data.experience || []).reduce((n, role) => n + (role.bullets || []).length, 0);
+  const pageTwoParagraphs = 4
+    + (data.projects || []).length
+    + (data.projects || []).reduce((n, project) => n + (project.bullets || []).length, 0)
+    + (data.skills || []).length
+    + 2
+    + ((data.certifications || master.certifications || []).length);
+  const oneExtra = fillTwips(layout, 'page1', pageOneParagraphs);
+  const twoExtra = fillTwips(layout, 'page2', pageTwoParagraphs);
 
   // Name + contact
   children.push(new Paragraph({
@@ -181,15 +206,15 @@ export function buildResumeDocx(docx, master, tailored, opts = {}) {
   children.push(contactLine(docx, profile));
 
   // Summary
-  children.push(sectionHeading(docx, 'PROFESSIONAL SUMMARY'));
+  children.push(sectionHeading(docx, 'PROFESSIONAL SUMMARY', { extra: oneExtra }));
   children.push(new Paragraph({
     alignment: 'both',
-    spacing: { before: 55, after: 35 },
+    spacing: { before: 55 + oneExtra, after: 35 + oneExtra },
     children: runsFromMarked(TextRun, data.summary || '', { size: 19 }),
   }));
 
   // Experience
-  children.push(sectionHeading(docx, 'WORK EXPERIENCE'));
+  children.push(sectionHeading(docx, 'WORK EXPERIENCE', { extra: oneExtra }));
   for (const role of data.experience || []) {
     const masterRole = (master.experience || []).find((r) => r.id === role.id) || role;
     children.push(titleWithDate(
@@ -204,19 +229,20 @@ export function buildResumeDocx(docx, master, tailored, opts = {}) {
         }),
       ],
       masterRole.dates,
+      { extra: oneExtra },
     ));
     for (const bullet of role.bullets || []) {
-      children.push(bulletParagraph(docx, bullet));
+      children.push(bulletParagraph(docx, bullet, { extra: oneExtra }));
     }
   }
 
   // Projects (page 2)
-  children.push(sectionHeading(docx, 'PROJECTS', { pageBreakBefore: true }));
+  children.push(sectionHeading(docx, 'PROJECTS', { pageBreakBefore: true, extra: twoExtra }));
   for (const project of data.projects || []) {
     const masterProject = (master.projects || []).find((p) => p.id === project.id) || project;
     children.push(new Paragraph({
       keepNext: true,
-      spacing: { before: 88, after: 12 },
+      spacing: { before: 88 + twoExtra, after: 12 + twoExtra },
       children: [
         new TextRun({
           text: masterProject.name,
@@ -236,35 +262,35 @@ export function buildResumeDocx(docx, master, tailored, opts = {}) {
       ],
     }));
     for (const bullet of project.bullets || []) {
-      children.push(bulletParagraph(docx, bullet));
+      children.push(bulletParagraph(docx, bullet, { extra: twoExtra }));
     }
   }
 
   // Skills
-  children.push(sectionHeading(docx, 'TECHNICAL SKILLS'));
+  children.push(sectionHeading(docx, 'TECHNICAL SKILLS', { extra: twoExtra }));
   for (const group of data.skills || []) {
-    children.push(skillsParagraph(docx, group));
+    children.push(skillsParagraph(docx, group, { extra: twoExtra }));
   }
 
   // Education
   const edu = master.education || {};
-  children.push(sectionHeading(docx, 'EDUCATION'));
+  children.push(sectionHeading(docx, 'EDUCATION', { extra: twoExtra }));
   children.push(titleWithDate(
     docx,
     [new TextRun({ text: edu.school || '', bold: true, size: 20, font: FONT, color: BODY })],
     edu.dates || '',
-    { before: 90, after: 8 },
+    { before: 90, after: 8, extra: twoExtra },
   ));
   if (edu.degree) {
     children.push(new Paragraph({
-      spacing: { after: 8 },
+      spacing: { after: 8 + twoExtra },
       children: [new TextRun({ text: edu.degree, italics: true, size: 19, font: FONT, color: BODY })],
     }));
   }
   if (edu.coursework) {
     children.push(new Paragraph({
       alignment: 'both',
-      spacing: { after: 8 },
+      spacing: { after: 8 + twoExtra },
       children: [
         new TextRun({ text: 'Coursework: ', bold: true, size: 18, font: FONT, color: BODY }),
         new TextRun({ text: edu.coursework, size: 18, font: FONT, color: GRAY }),
@@ -273,10 +299,11 @@ export function buildResumeDocx(docx, master, tailored, opts = {}) {
   }
 
   // Certifications
-  children.push(sectionHeading(docx, 'ACCOMPLISHMENTS / CERTIFICATIONS'));
-  for (const cert of data.certifications || master.certifications || []) {
+  children.push(sectionHeading(docx, 'ACCOMPLISHMENTS / CERTIFICATIONS', { extra: twoExtra }));
+  const certs = data.certifications || master.certifications || [];
+  for (const cert of certs) {
     const text = cert.org ? `**${cert.org}:** ${cert.items}` : cert.items;
-    children.push(bulletParagraph(docx, text));
+    children.push(bulletParagraph(docx, text, { extra: twoExtra }));
   }
 
   const doc = new Document({

@@ -41,6 +41,53 @@ const HEADLINE_RULES = [
   { re: /data scientist|decision scientist|quantitative analyst/i, text: 'Data Scientist' },
 ];
 
+// These rewrites only make an existing fact easier to find. They never add a
+// tool, metric, employer, or responsibility that is not already in the bullet.
+const ALIGNMENT_RULES = [
+  {
+    label: 'predictive forecasting',
+    jd: /\b(?:forecast|forecasting|predictive model|predictive analytics|time series)\b/i,
+    source: /\bforecasting models?\b/i,
+    target: 'predictive forecasting models',
+    already: /predictive forecasting models?/i,
+  },
+  {
+    label: 'NLP / sentiment analysis',
+    jd: /\b(?:nlp|natural language|sentiment|genai|generative ai|llm)\b/i,
+    source: /\bLLM[ -]based sentiment analysis\b/i,
+    target: 'NLP and LLM-based sentiment analysis',
+    already: /NLP and LLM-based sentiment analysis/i,
+  },
+  {
+    label: 'business intelligence dashboards',
+    jd: /\b(?:business intelligence|bi\b|dashboards?|reporting)\b/i,
+    source: /\bPower BI dashboards?\b/i,
+    target: 'business intelligence dashboards using Power BI',
+    already: /business intelligence dashboards using Power BI/i,
+  },
+  {
+    label: 'real-time analytics',
+    jd: /\b(?:real[ -]?time|streaming|analytics)\b/i,
+    source: /\breal time insights\b/i,
+    target: 'real-time analytics and insights',
+    already: /real-time analytics and insights/i,
+  },
+  {
+    label: 'CI/CD and model deployment',
+    jd: /\b(?:ci\/cd|mlops|model deployment|deployment|devops)\b/i,
+    source: /\bCI\/CD pipelines\b/i,
+    target: 'CI/CD and model deployment pipelines',
+    already: /CI\/CD and model deployment pipelines/i,
+  },
+  {
+    label: 'statistical modeling / machine learning',
+    jd: /\b(?:statistical modeling|machine learning|ml\b|predictive)\b/i,
+    source: /\bstatistical and ML techniques\b/i,
+    target: 'statistical modeling and machine learning techniques',
+    already: /statistical modeling and machine learning techniques/i,
+  },
+];
+
 function roleBulletCap(index) {
   // Keep every bullet in the latest role. Older roles keep up to six; the
   // two-page fitter trims further only when the preview actually overflows.
@@ -169,6 +216,35 @@ function pickExperience(master, analysis) {
   });
 }
 
+function alignText(text, jd) {
+  let value = String(text || '');
+  const applied = [];
+  for (const rule of ALIGNMENT_RULES) {
+    if (rule.already && rule.already.test(value)) continue;
+    if (!rule.jd.test(jd) || !rule.source.test(value)) continue;
+    const next = value.replace(rule.source, rule.target);
+    if (next !== value) {
+      value = next;
+      applied.push(rule.label);
+    }
+  }
+  return { text: value, applied };
+}
+
+function alignLatestRole(experience, jd) {
+  const roles = experience.map((role) => ({ ...role }));
+  if (!roles.length) return { experience: roles, changes: [] };
+  const changes = [];
+  roles[0].bullets = (roles[0].bullets || []).map((bullet) => {
+    const aligned = alignText(bullet, jd);
+    if (aligned.text !== bullet) {
+      changes.push({ bullet, after: aligned.text, labels: aligned.applied });
+    }
+    return aligned.text;
+  });
+  return { experience: roles, changes };
+}
+
 function extractYears(master, analysis) {
   const match = String(master.summary || '').match(/(\d{1,2})\s*\+?\s*(?:years?|yrs?)/i);
   if (match) return `${match[1]}+`;
@@ -202,16 +278,45 @@ function chooseSkills(analysis, master) {
   const chosen = [];
   for (const category of priority) {
     for (const keyword of matched.filter((k) => k.category === category)) {
-      if (chosen.length >= 6) break;
+      if (chosen.length >= 8) break;
       if (!chosen.some((c) => c.toLowerCase() === keyword.name.toLowerCase())) chosen.push(keyword.name);
     }
   }
   for (const keyword of matched) {
-    if (chosen.length >= 6) break;
+    if (chosen.length >= 8) break;
     if (!chosen.some((c) => c.toLowerCase() === keyword.name.toLowerCase())) chosen.push(keyword.name);
   }
   if (!chosen.length) return 'Python, SQL, machine learning, and cloud data platforms';
   return chosen.map((name) => name.replace('Scikit Learn', 'scikit-learn')).join(', ');
+}
+
+function latestRoleHighlights(master, analysis) {
+  const role = (master.experience || [])[0];
+  if (!role) return [];
+  const roleText = [role.title, ...(role.bullets || [])].filter(Boolean).join(' ');
+  const jdMatches = analysis.keywords.filter((k) => k.matched).map((k) => k.name.toLowerCase());
+  const picked = [];
+  for (const cap of CAPABILITIES) {
+    if (picked.length >= 3) break;
+    if (!cap.terms.some((term) => jdMatches.includes(term.toLowerCase()))) continue;
+    if (roleText.toLowerCase().includes(cap.phrase.toLowerCase())) picked.push(cap.label);
+  }
+  if (!picked.length) {
+    // Even when the JD does not name an exact capability, the latest role
+    // should still lead with its strongest real outcomes.
+    for (const fallback of ['forecasting models', 'LLM sentiment analysis', 'Power BI dashboards', 'FastAPI data pipelines']) {
+      if (picked.length >= 2) break;
+      const cap = CAPABILITIES.find((item) => item.label === fallback);
+      if (cap && roleText.toLowerCase().includes(cap.phrase.toLowerCase())) picked.push(cap.label);
+    }
+  }
+  return unique(picked).slice(0, 3);
+}
+
+function joinNatural(items = []) {
+  if (items.length <= 1) return items[0] || '';
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
 }
 
 function chooseCapabilities(analysis, master) {
@@ -238,14 +343,15 @@ export function buildLocalSummary(master, analysis) {
   const years = extractYears(master, analysis);
   const domains = domainsFrom(master);
   const skills = chooseSkills(analysis, master);
+  const highlights = latestRoleHighlights(master, analysis);
   const capabilities = chooseCapabilities(analysis, master);
-  const delivery = capabilities.length
-    ? capabilities.length === 3
-      ? `${capabilities[0]}, ${capabilities[1]}, and ${capabilities[2]}`
-      : capabilities.join(' and ')
-    : 'production ML pipelines, LLM applications, and scalable APIs';
-  const summary = `${headline} with ${years} years of experience building production ML, GenAI, and analytics systems across ${domains}. Deep expertise in ${skills}; hands-on delivery of ${delivery}.`;
-  return shrinkSummary(summary, 520);
+  const delivery = highlights.length >= 2
+    ? highlights
+    : capabilities.length
+      ? capabilities
+      : ['production ML pipelines', 'LLM applications', 'scalable APIs'];
+  const summary = `${headline} with ${years} years of experience building production ML, GenAI, and analytics systems across ${domains}. Deep expertise in ${skills}. Most recently, delivered ${joinNatural(delivery)}.`;
+  return shrinkSummary(summary, 540);
 }
 
 export function shrinkSummary(summary, maxChars = 480) {
@@ -266,18 +372,25 @@ export function shrinkSummary(summary, maxChars = 480) {
 export function buildLocalPlan(master, jd, report = null) {
   const analysis = report || buildAtsReport(master, jd);
   const summary = buildLocalSummary(master, analysis);
-  const experience = pickExperience(master, analysis);
+  const aligned = alignLatestRole(pickExperience(master, analysis), jd);
   const projects = pickProjects(master, analysis);
   const skills = pickSkills(master, analysis);
+  const notes = [
+    'Local tailoring keeps all wording factual. It selects, reorders, and trims existing content.',
+  ];
+  if (aligned.changes.length) {
+    notes.push(
+      `Aligned the latest role with ${unique(aligned.changes.flatMap((change) => change.labels)).join(', ')} wording already supported by that role. No new tools or metrics were added.`,
+    );
+  }
   return {
     source: 'local',
     summary,
-    experience,
+    experience: aligned.experience,
     projects,
     skills,
-    notes: [
-      'Local tailoring keeps all wording factual and only reorders or trims existing content.',
-    ],
+    alignment: aligned.changes,
+    notes,
   };
 }
 
@@ -324,6 +437,8 @@ export function normalizePlan(plan = {}, master = {}) {
     skills,
     certifications,
     notes: Array.isArray(plan.notes) ? plan.notes : [],
+    alignment: Array.isArray(plan.alignment) ? plan.alignment : [],
+    layout: plan.layout && typeof plan.layout === 'object' ? plan.layout : null,
   };
 }
 
@@ -348,6 +463,7 @@ export function materializePlan(master, plan) {
     skills: safe.skills,
     education: master.education,
     certifications: safe.certifications,
+    layout: safe.layout,
     meta: { ...(master.meta || {}), tailored: true, source: safe.source },
   };
 }

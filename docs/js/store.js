@@ -10,6 +10,23 @@ export const KEYS = {
   onboarded: `${PREFIX}.onboarded`,
 };
 
+// The API key deliberately lives in memory only. It is never written to
+// localStorage, so a reload or a shared browser starts without a key.
+let sessionApiKey = '';
+
+export function getSessionApiKey() {
+  return sessionApiKey;
+}
+
+export function setSessionApiKey(value) {
+  sessionApiKey = String(value || '').trim();
+  return sessionApiKey;
+}
+
+export function clearSessionApiKey() {
+  sessionApiKey = '';
+}
+
 function read(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
@@ -57,11 +74,21 @@ export function clearMaster() {
 }
 
 export function loadSettings() {
-  return { ...DEFAULT_AI_SETTINGS, ...(read(KEYS.settings, {}) || {}) };
+  const saved = read(KEYS.settings, {}) || {};
+  // Migrate away from the old behaviour that persisted the key. Remove it
+  // from localStorage as soon as the app loads.
+  if (Object.prototype.hasOwnProperty.call(saved, 'apiKey')) {
+    const { apiKey, ...safe } = saved;
+    write(KEYS.settings, safe);
+    return { ...DEFAULT_AI_SETTINGS, ...safe, apiKey: '' };
+  }
+  return { ...DEFAULT_AI_SETTINGS, ...saved, apiKey: '' };
 }
 
 export function saveSettings(settings) {
-  return write(KEYS.settings, settings);
+  const { apiKey, ...safe } = settings || {};
+  if (apiKey !== undefined) setSessionApiKey(apiKey);
+  return write(KEYS.settings, safe);
 }
 
 export function loadJd() {
@@ -115,4 +142,5 @@ export function exportMasterJson(master) {
 
 export function clearAll() {
   Object.values(KEYS).forEach(remove);
+  clearSessionApiKey();
 }

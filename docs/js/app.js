@@ -12,10 +12,16 @@ import {
 import { createDocxBlob } from './docx-export.js';
 import { importResumeFile } from './docx-import.js';
 import { SAFETY_PX, basePlan, fitPlan } from './fit.js';
-import { getPlainText, renderResume, renderResumeHtml } from './render.js';
+import {
+  applyResumeFill,
+  getPlainText,
+  renderResume,
+  renderResumeHtml,
+} from './render.js';
 import {
   clearAll,
   clearPlan,
+  clearSessionApiKey,
   exportMasterJson,
   hasContact,
   isOnboarded,
@@ -31,6 +37,11 @@ import {
   starterMaster,
   updateContact,
 } from './store.js';
+import {
+  fetchJobDescription,
+  isUrlOnly,
+  normalizeUrl,
+} from './jd-import.js';
 import {
   buildLocalPlan,
   materializePlan,
@@ -60,7 +71,8 @@ const state = {
   previewScale: 1,
 };
 
-const DEFAULT_TAILOR_NOTE = 'Tailoring keeps your wording factual: it selects, reorders, and trims existing content.';
+const DEFAULT_TAILOR_NOTE = 'Tailoring keeps your wording factual: it selects, reorders, aligns, and trims existing content.';
+let lastAutoLoadedUrl = '';
 
 /* ------------------------------------------------------------------ */
 /* Small UI helpers                                                    */
@@ -182,7 +194,10 @@ function scalePreview() {
 }
 
 function updatePreviewStatus(displayPlan, measurement) {
-  const pagesFit = measurement.page1.overflow <= -SAFETY_PX && measurement.page2.overflow <= -SAFETY_PX;
+  // After the fill pass, a page intentionally ends near the bottom margin.
+  // Keep only a small visual buffer for this status; the fitter separately
+  // reserves SAFETY_PX before fill is applied.
+  const pagesFit = measurement.page1.overflow <= -10 && measurement.page2.overflow <= -10;
   const fitted = displayPlan.fitInfo ? Boolean(displayPlan.fitInfo.fitted) : pagesFit;
   const badge = $('fit-status');
 
@@ -196,7 +211,11 @@ function updatePreviewStatus(displayPlan, measurement) {
 
 function renderPreview() {
   const displayPlan = state.plan || basePlan(state.master);
-  state.measurement = renderResume($('preview-mount'), state.master, displayPlan);
+  state.plan = displayPlan;
+  renderResume($('preview-mount'), state.master, displayPlan);
+  const filled = applyResumeFill($('preview-mount'));
+  displayPlan.layout = filled.layout;
+  state.measurement = filled.measurement;
   updatePreviewStatus(displayPlan, state.measurement);
   requestAnimationFrame(scalePreview);
   return state.measurement;
@@ -214,17 +233,19 @@ function addChip(container, text, kind, title = '') {
   container.appendChild(chip);
 }
 
-function renderChipList(container, items, kind, emptyText, limit = 18) {
+function renderChipList(container, items, kind, emptyText, limit = 18, metaFn = null) {
   container.innerHTML = '';
   if (!items.length) {
     addChip(container, emptyText, 'more');
     return;
   }
   for (const item of items.slice(0, limit)) {
-    const meta = [
-      item.count ? `${item.count} mention${item.count === 1 ? '' : 's'}` : '',
-      item.required ? 'required' : item.preferred ? 'preferred' : '',
-    ].filter(Boolean).join(' · ');
+    const meta = metaFn
+      ? metaFn(item)
+      : [
+        item.count ? `${item.count} mention${item.count === 1 ? '' : 's'}` : '',
+        item.required ? 'required' : item.preferred ? 'preferred' : '',
+      ].filter(Boolean).join(' · ');
     addChip(container, item.name, kind, meta);
   }
   if (items.length > limit) {
@@ -263,17 +284,44 @@ function renderAts(baseReport, report) {
   setBadge($('ats-confidence'), `${report.confidence} confidence`, 'badge-muted');
 
   const matched = report.matched.filter((keyword) => keyword.score);
-  const missing = report.missing.filter((keyword) => keyword.score);
+  const baseMatchedNames = new Set((baseReport?.matched || []).map((keyword) => keyword.name));
+  const missing = report.missing
+    .filter((keyword) => keyword.score)
+    .map((keyword) => ({ ...keyword, inMaster: baseMatchedNames.has(keyword.name) }));
   $('matched-count').textContent = String(matched.length);
   $('missing-count').textContent = String(missing.length);
   renderChipList($('matched-chips'), matched, 'good', 'No scored keywords matched yet.');
-  renderChipList($('missing-chips'), missing, 'miss', 'No taxonomy keywords missing.');
+  renderChipList(
+    $('missing-chips'),
+    missing,
+    'miss',
+    'No taxonomy keywords missing.',
+    18,
+    (item) => [
+      item.required ? 'required' : item.preferred ? 'preferred' : '',
+      item.inMaster ? 'in your master, not selected in this version' : 'not in your resume — not auto-added',
+    ].filter(Boolean).join(' · '),
+  );
 
+  const absent = missing.filter((keyword) => !keyword.inMaster);
+  const omitted = missing.filter((keyword) => keyword.inMaster);
   const unknown = extractUnknownTerms(reportJd, report.resumeText);
-  const note = $('missing-note');
+  const parts = [];
+  if (omitted.length) {
+    parts.push(`Still in your master but not in this tailored version: ${omitted.map((k) => k.name).join(', ')}. Tailor again if the fit allows more room.`);
+  }
+  if (absent.length) {
+    const required = absent.filter((keyword) => keyword.required).map((keyword) => keyword.name);
+    const label = required.length ? `Required by the JD but absent from your resume: ${required.join(', ')}.` : `Not in your resume, so not auto-added: ${absent.map((keyword) => keyword.name).join(', ')}.`;
+    parts.push(`${label} Add missing skills only if you truly have that experience.`);
+  }
   if (unknown.length) {
+    parts.push(`Also review: ${unknown.join(', ')}. These are outside the controlled skill list, so they were not auto-added.`);
+  }
+  const note = $('missing-note');
+  if (parts.length) {
     note.hidden = false;
-    note.textContent = `Also review: ${unknown.join(', ')}. These are not in the controlled skill list, so they were not auto-added.`;
+    note.textContent = parts.join('\n');
   } else {
     note.hidden = true;
     note.textContent = '';
@@ -336,10 +384,10 @@ function renderNotes(displayPlan) {
   }
 
   const notes = [];
-  if (displayPlan.source === 'deepseek') {
-    notes.push('DeepSeek selected and ordered existing content for this job. No facts, tools, metrics, or dates were generated.');
-  } else {
-    notes.push('Local tailoring selected, reordered, and trimmed existing content using the job description keywords.');
+  if (!(displayPlan.notes || []).length) {
+    notes.push(displayPlan.source === 'deepseek'
+      ? 'DeepSeek selected and ordered existing content for this job. Any rewording kept the existing facts, tools, metrics, and dates.'
+      : 'Local tailoring selected, reordered, and trimmed existing content using the job description keywords.');
   }
   for (const note of displayPlan.notes || []) notes.push(note);
   if (displayPlan.fitInfo) notes.push(describeFit(displayPlan.fitInfo));
@@ -447,12 +495,16 @@ function saveContactFromForm(event) {
 
 function syncSettingsUi() {
   const settings = state.settings;
-  $('setting-key').value = settings.apiKey || '';
+  // Never prefill the key: it is intentionally invisible after it is entered.
+  $('setting-key').value = '';
   $('setting-model').value = settings.model || DEFAULT_AI_SETTINGS.model;
   $('setting-endpoint').value = settings.endpoint || DEFAULT_AI_SETTINGS.endpoint;
   $('setting-key').type = 'password';
+  $('setting-key').autocomplete = 'new-password';
   $('btn-toggle-key').textContent = 'Show';
-  setApiStatus(settings.apiKey ? 'A key is saved locally.' : '');
+  setApiStatus(settings.apiKey ? 'Key loaded for this tab only. It is cleared on reload.' : 'No key in this tab.');
+  $('btn-forget-key').hidden = !settings.apiKey;
+  $('setting-rewrite').checked = settings.rewriteBullets !== false;
   $('ai-toggle').checked = Boolean(settings.useAI);
   updateAiHint();
   updateMasterCard();
@@ -469,39 +521,60 @@ function updateAiHint() {
   if (!hint) return;
   if (state.settings.apiKey) {
     if (state.settings.useAI) {
-      hint.textContent = `DeepSeek (${state.settings.model || DEFAULT_AI_SETTINGS.model}) will select and order existing content for the job.`;
+      const rewrite = state.settings.rewriteBullets !== false
+        ? ' It can also reword the summary and latest role while keeping the same facts.'
+        : '';
+      hint.textContent = `DeepSeek (${state.settings.model || DEFAULT_AI_SETTINGS.model}) will select existing content for this job.${rewrite} The key is kept in memory for this tab only.`;
     } else {
-      hint.textContent = 'DeepSeek is off. Local tailoring will select, reorder, and trim existing content.';
+      hint.textContent = 'DeepSeek is off. Local tailoring will select, reorder, align, and trim existing content.';
     }
   } else {
-    hint.textContent = 'No API key saved. Local tailoring will reorder and trim existing content.';
+    hint.textContent = 'No API key in this tab. Local tailoring will reorder, align, and trim existing content.';
   }
 }
 
 function saveSettingsFromForm() {
+  const typedKey = $('setting-key').value.trim();
   state.settings = {
     ...state.settings,
-    apiKey: $('setting-key').value.trim(),
+    apiKey: typedKey || state.settings.apiKey || '',
     model: $('setting-model').value.trim() || DEFAULT_AI_SETTINGS.model,
     endpoint: $('setting-endpoint').value.trim() || DEFAULT_AI_SETTINGS.endpoint,
     useAI: $('ai-toggle').checked,
+    rewriteBullets: $('setting-rewrite').checked,
   };
   saveSettings(state.settings);
+  $('setting-key').value = '';
   updateAiHint();
   closeModal('settings-modal');
-  toast('Settings saved in this browser.', 'success');
+  toast(
+    typedKey
+      ? 'Settings saved. The API key is kept in memory for this tab only.'
+      : 'Settings saved. The API key is never written to browser storage.',
+    'success',
+  );
+}
+
+function forgetApiKey() {
+  state.settings = { ...state.settings, apiKey: '' };
+  clearSessionApiKey();
+  saveSettings(state.settings);
+  $('setting-key').value = '';
+  setApiStatus('Key removed from this tab.', '');
+  $('btn-forget-key').hidden = true;
+  updateAiHint();
 }
 
 async function testApiConnection() {
   const button = $('btn-test-api');
   const settings = {
     ...state.settings,
-    apiKey: $('setting-key').value.trim(),
+    apiKey: $('setting-key').value.trim() || state.settings.apiKey || '',
     model: $('setting-model').value.trim() || DEFAULT_AI_SETTINGS.model,
     endpoint: $('setting-endpoint').value.trim() || DEFAULT_AI_SETTINGS.endpoint,
   };
   if (!settings.apiKey) {
-    setApiStatus('Add an API key first.', 'bad');
+    setApiStatus('Enter an API key first.', 'bad');
     return;
   }
   button.disabled = true;
@@ -539,6 +612,70 @@ function applyJdText(value, { persist = true } = {}) {
 
 const persistJd = debounce(() => saveJd($('jd-input').value), 350);
 
+function setUrlLoading(loading) {
+  const button = $('btn-load-url');
+  if (!button) return;
+  button.disabled = loading;
+  button.textContent = loading ? 'Reading…' : 'Load URL';
+  $('jd-input').setAttribute('aria-busy', loading ? 'true' : 'false');
+}
+
+async function loadJdFromUrl(value, opts = {}) {
+  const raw = String(value || '').trim() || currentJd();
+  const url = normalizeUrl(raw);
+  if (!url) {
+    toast('Enter a valid http(s) job posting URL.', 'error');
+    $('jd-url').focus();
+    return '';
+  }
+  setUrlLoading(true);
+  try {
+    const result = await fetchJobDescription(url);
+    lastAutoLoadedUrl = '';
+    applyJdText(result.text);
+    $('jd-url').value = '';
+    updateLoadingTextNow('Readable job text loaded. Review it, then tailor.');
+    toast(`Loaded the full job post via ${result.source}.`, 'success');
+    if (opts.focus !== false) $('jd-input').focus();
+    return result.text;
+  } catch (error) {
+    lastAutoLoadedUrl = '';
+    if (error.name === 'AbortError') {
+      toast('Stopped reading the job URL.', '');
+    } else {
+      toast(error.message || 'Could not read that job URL. Paste the description instead.', 'error');
+    }
+    return '';
+  } finally {
+    setUrlLoading(false);
+  }
+}
+
+function updateLoadingTextNow(message) {
+  // Used only for a non-modal URL-load confirmation. Keeping it separate from
+  // the tailoring loading modal avoids covering the page while fetching.
+  const note = $('jd-url-status');
+  if (!note) return;
+  note.textContent = message || '';
+  note.hidden = !message;
+  if (message) {
+    clearTimeout(updateLoadingTextNow.timer);
+    updateLoadingTextNow.timer = setTimeout(() => {
+      note.hidden = true;
+    }, 6000);
+  }
+}
+
+async function resolveJdInput() {
+  let jd = currentJd();
+  if (isUrlOnly(jd)) {
+    const loaded = await loadJdFromUrl(jd, { focus: false });
+    if (!loaded) return '';
+    jd = currentJd();
+  }
+  return jd;
+}
+
 function updateTailorNote() {
   const note = $('tailor-note');
   if (!note) return;
@@ -548,9 +685,9 @@ function updateTailorNote() {
     return;
   }
   if (state.plan && state.plan.source === 'deepseek') {
-    note.textContent = 'DeepSeek selected existing content only. Review the notes and the ATS report before exporting.';
+    note.textContent = 'DeepSeek selected existing content and may have reworded the summary and latest role. Review the notes and ATS report before exporting.';
   } else if (state.plan && state.plan.source === 'local') {
-    note.textContent = 'Local tailoring keeps your wording factual: it selected, reordered, and trimmed existing content.';
+    note.textContent = 'Local tailoring keeps your wording factual: it selected, aligned, reordered, and trimmed existing content.';
   } else {
     note.textContent = DEFAULT_TAILOR_NOTE;
   }
@@ -568,9 +705,13 @@ function attachFitInfo(plan, fit) {
 
 async function tailorResume() {
   if (state.busy) return;
-  const jd = currentJd();
-  if (jd.length < 80) {
-    toast('Paste the full job description first (at least a few sentences).', 'error');
+  if ($('btn-load-url')?.disabled) {
+    toast('Still reading the job posting URL. Try again in a moment.', '');
+    return;
+  }
+  const jd = await resolveJdInput();
+  if (!jd || jd.length < 80) {
+    toast('Paste the full job description or a job posting URL first.', 'error');
     $('jd-input').focus();
     return;
   }
@@ -608,9 +749,9 @@ async function tailorResume() {
       }
     } else {
       if ($('ai-toggle').checked && !state.settings.apiKey) {
-        toast('No API key saved. Local tailoring is being used.', '');
+        toast('No API key in this tab. Local tailoring is being used.', '');
       }
-      updateLoading('Selecting and ordering the strongest existing content…');
+      updateLoading('Selecting and aligning the strongest existing content…');
       nextPlan = buildLocalPlan(state.master, jd, baseReport);
     }
 
@@ -631,6 +772,7 @@ async function tailorResume() {
     state.report = buildAtsReport(tailored, jd);
 
     renderPreview();
+    savePlan(state.plan);
     renderAts(state.baseReport, state.report);
     renderNotes(fittedPlan);
     updateMasterCard();
@@ -854,6 +996,7 @@ function bindEvents() {
   });
   $('btn-save-settings').addEventListener('click', saveSettingsFromForm);
   $('btn-test-api').addEventListener('click', testApiConnection);
+  $('btn-forget-key').addEventListener('click', forgetApiKey);
   $('btn-toggle-key').addEventListener('click', () => {
     const input = $('setting-key');
     const show = input.type === 'password';
@@ -864,20 +1007,39 @@ function bindEvents() {
   $('btn-export-json').addEventListener('click', exportJson);
   $('btn-reset-starter').addEventListener('click', resetToStarter);
   $('btn-clear-all').addEventListener('click', () => {
-    if (!window.confirm('Clear the resume, job description, plan, and DeepSeek settings from this browser?')) return;
+    if (!window.confirm('Clear the resume, job description, plan, and saved settings from this browser? The in-memory API key is also cleared.')) return;
     clearAll();
     window.location.reload();
   });
 
   // JD + tailoring
+  const autoReadUrl = debounce(() => {
+    const value = currentJd();
+    if (!isUrlOnly(value) || value === lastAutoLoadedUrl) return;
+    lastAutoLoadedUrl = value;
+    loadJdFromUrl(value, { focus: false });
+  }, 700);
   $('jd-input').addEventListener('input', () => {
     state.jd = $('jd-input').value;
     updateJdCount();
     updateTailorNote();
     persistJd();
+    autoReadUrl();
+  });
+  $('btn-load-url').addEventListener('click', () => {
+    const value = $('jd-url').value.trim() || currentJd();
+    loadJdFromUrl(value);
+  });
+  $('jd-url').addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    loadJdFromUrl($('jd-url').value.trim() || currentJd());
   });
   $('btn-sample').addEventListener('click', () => {
     applyJdText(SAMPLE_JD);
+    lastAutoLoadedUrl = '';
+    $('jd-url').value = '';
+    updateLoadingTextNow('');
     $('jd-input').focus();
     toast('Sample job description loaded. Tailor when you are ready.', '');
   });
@@ -886,7 +1048,7 @@ function bindEvents() {
     saveSettings(state.settings);
     updateAiHint();
     if ($('ai-toggle').checked && !state.settings.apiKey) {
-      toast('Add a DeepSeek API key in Settings, or leave AI off for local tailoring.', '');
+      toast('Enter a DeepSeek API key in Settings for this tab, or leave AI off for local tailoring.', '');
     }
   });
   $('btn-tailor').addEventListener('click', tailorResume);

@@ -120,13 +120,35 @@ function sectionWeightForTerm(sections, term) {
   return best;
 }
 
+const GENERIC_HEADING_RE = /^(?:title\s*:|url\s+source|markdown\s+content|published\s+time|about(?:\s+the)?(?:\s+(?:team|role|us|company|position|job|opportunity))?|the\s+(?:team|role|company|opportunity)|overview|summary|responsibilities|key\s+responsibilities|what\s+you(?:'|’)?ll\s+(?:do|need|be\s+doing)|what\s+we(?:'|’)?re\s+looking\s+for|who\s+you\s+are|requirements|qualifications|preferred(?:\s+qualifications)?|minimum\s+qualifications|basic\s+qualifications|benefits|perks|compensation|salary|pay\s+range|location|department|job\s+description|job\s+type|employment\s+type|in\s+this\s+(?:role|position)|you\s+(?:will|might|may|should)|day[ -]to[ -]day|reports?\s+to|why\s+(?:join|openai|us)|equal\s+opportunity)(?=\s|:|$)/i;
+
+function looksLikeTitle(line = '') {
+  const value = String(line || '').trim();
+  if (!value || value.length > 90) return false;
+  if (/[.!?;:]$/.test(value)) return false;
+  if (/^(?:we|you|our|this|that|these|those|it|they|i)\b/i.test(value)) return false;
+  return value.split(/\s+/).filter(Boolean).length <= 7;
+}
+
 export function extractJobTitle(jd = '') {
   const text = String(jd).trim();
   if (!text) return '';
   const explicit = text.match(/(?:job title|position|role)\s*[:\-–—]\s*([^\n]{3,90})/i);
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 12);
-  const known = lines.find((line) => ROLE_TITLES.some((t) => line.toLowerCase().includes(t)));
-  let title = explicit?.[1] || known || lines[0] || '';
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line
+      .replace(/^\s*(?:[-•](?=\s)|\*(?=\s)|\d+\.(?=\s))\s*/, '')
+      .replace(/^\s*#{1,6}\s*/, '')
+      .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+      .trim())
+    .filter(Boolean);
+  const titleLines = lines.slice(0, 80).filter((line) => line.length <= 100 && !GENERIC_HEADING_RE.test(line));
+  const known = titleLines.find((line) => {
+    const lower = line.toLowerCase();
+    return looksLikeTitle(line) && ROLE_TITLES.some((t) => lower.startsWith(t));
+  });
+  const fallback = titleLines.find(looksLikeTitle) || '';
+  let title = explicit?.[1] || known || fallback;
   title = title
     .replace(/^(?:job title|position|role)\s*[:\-–—]\s*/i, '')
     .split(/[|•]/)[0]
