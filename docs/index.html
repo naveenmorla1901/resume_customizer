@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Tailor a two-page, ATS-friendly resume to any job description. Your resume data stays in your browser.">
+  <meta name="theme-color" content="#1f3864">
+  <title>Resume Studio — ATS resume tailoring</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Resume Studio home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+        </span>
+        <span>
+          <strong>Resume Studio</strong>
+          <small>ATS-first tailoring</small>
+        </span>
+      </a>
+      <div class="topbar-actions">
+        <span class="status-pill" id="storage-status"><span class="status-dot"></span>Local only</span>
+        <button class="btn btn-ghost btn-sm" id="btn-help" type="button">How it works</button>
+        <button class="btn btn-ghost btn-sm" id="btn-settings" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.1 2.1-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-3v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1-2.1-2.1.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3v-3h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.1-2.1.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3h3v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.1 2.1-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1H21v3h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          Settings
+        </button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="control-column" aria-label="Resume controls">
+        <div class="card resume-card" id="resume-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Your resume</p>
+              <h1 id="resume-name">Resume</h1>
+            </div>
+            <span class="badge" id="resume-badge">Starter</span>
+          </div>
+          <p class="muted" id="resume-meta">Loading…</p>
+          <div class="button-row">
+            <button class="btn btn-ghost btn-sm" id="btn-import" type="button">Import .docx / .json</button>
+            <button class="btn btn-ghost btn-sm" id="btn-contact" type="button">Edit contact</button>
+          </div>
+          <div class="inline-warning" id="contact-warning" hidden>
+            <span>Add a phone number and email before you export.</span>
+            <button class="link-btn" id="btn-contact-warning" type="button">Add now</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Step 1</p>
+              <h2>Paste the job description</h2>
+            </div>
+          </div>
+          <textarea id="jd-input" rows="9" placeholder="Paste the full job post here. Include the title, requirements, and preferred qualifications."></textarea>
+          <div class="textarea-foot">
+            <span id="jd-count">0 characters</span>
+            <button class="link-btn" id="btn-sample" type="button">Use sample JD</button>
+          </div>
+          <div class="ai-row">
+            <label class="switch">
+              <input id="ai-toggle" type="checkbox">
+              <span class="switch-track" aria-hidden="true"></span>
+              <span>DeepSeek selection</span>
+            </label>
+            <button class="link-btn" id="btn-ai-settings" type="button">API settings</button>
+          </div>
+          <p class="helper" id="ai-hint">No API key saved. Local tailoring will reorder and trim existing content.</p>
+          <button class="btn btn-primary btn-block" id="btn-tailor" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg>
+            Tailor my resume
+          </button>
+          <p class="helper" id="tailor-note">Tailoring keeps your wording factual: it selects, reorders, and trims existing content.</p>
+        </div>
+
+        <div class="card ats-card" id="ats-card" hidden>
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">ATS check</p>
+              <h2 id="ats-heading">Match report</h2>
+            </div>
+            <span class="badge badge-muted" id="ats-confidence">—</span>
+          </div>
+          <div class="score-row">
+            <div class="score-ring" id="score-ring" style="--score:0">
+              <div class="score-inner">
+                <strong id="score-value">0</strong>
+                <span>ATS match</span>
+              </div>
+            </div>
+            <div class="score-breakdown">
+              <div class="score-line">
+                <span>Keyword coverage</span><strong id="keyword-score">0%</strong>
+                <div class="meter"><i id="keyword-meter" style="width:0%"></i></div>
+              </div>
+              <div class="score-line">
+                <span>Title fit</span><strong id="title-score">0%</strong>
+                <div class="meter"><i id="title-meter" style="width:0%"></i></div>
+              </div>
+              <div class="score-line">
+                <span>Format checks</span><strong id="format-score">0%</strong>
+                <div class="meter"><i id="format-meter" style="width:0%"></i></div>
+              </div>
+            </div>
+          </div>
+          <div class="score-delta" id="score-delta" hidden></div>
+          <div class="chip-block">
+            <div class="chip-head"><h3>Matched keywords</h3><span id="matched-count">0</span></div>
+            <div class="chips" id="matched-chips"></div>
+          </div>
+          <div class="chip-block">
+            <div class="chip-head"><h3>Missing from your resume</h3><span id="missing-count">0</span></div>
+            <div class="chips" id="missing-chips"></div>
+            <p class="mini-note" id="missing-note" hidden></p>
+          </div>
+          <details class="checks">
+            <summary>Format checks</summary>
+            <ul id="checks-list"></ul>
+          </details>
+          <p class="disclaimer">This is a heuristic keyword and format check, not a guarantee of any vendor's ATS result. Always review the final document.</p>
+        </div>
+
+        <div class="card" id="notes-card" hidden>
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Tailoring notes</p>
+              <h2>What changed</h2>
+            </div>
+          </div>
+          <ul class="notes-list" id="notes-list"></ul>
+        </div>
+      </section>
+
+      <section class="preview-column" aria-label="Resume preview">
+        <div class="preview-toolbar">
+          <div>
+            <p class="eyebrow">Preview</p>
+            <div class="preview-status">
+              <strong id="page-status">Two pages</strong>
+              <span class="badge badge-good" id="fit-status">Ready</span>
+            </div>
+          </div>
+          <div class="button-row preview-actions">
+            <button class="btn btn-ghost btn-sm" id="btn-copy" type="button">Copy text</button>
+            <button class="btn btn-ghost btn-sm" id="btn-print" type="button">Print / PDF</button>
+            <button class="btn btn-primary btn-sm" id="btn-download" type="button">Download DOCX</button>
+          </div>
+        </div>
+        <div class="preview-viewport" id="preview-viewport">
+          <div class="preview-scale" id="preview-scale">
+            <div class="preview-mount" id="preview-mount"></div>
+          </div>
+        </div>
+        <p class="preview-footer">US Letter · Calibri · two pages · selectable text. Print to PDF with your browser's “Save as PDF” option.</p>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <span>Resume data stays in this browser. Only the job description and resume content are sent to DeepSeek when you enable AI selection.</span>
+      <span id="footer-version">Local-first · no sign-in</span>
+    </footer>
+  </div>
+
+  <div class="measure-stage" id="measure-stage" aria-hidden="true"></div>
+  <div class="print-root" id="print-root" aria-hidden="true"></div>
+
+  <!-- Welcome -->
+  <div class="modal-backdrop" id="welcome-modal" hidden>
+    <div class="modal modal-welcome" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+      <button class="modal-close" data-close="welcome-modal" type="button" aria-label="Close">×</button>
+      <div class="welcome-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+      </div>
+      <p class="eyebrow">Welcome</p>
+      <h2 id="welcome-title">Tailor your resume without redesigning it.</h2>
+      <p class="muted">Paste a job description and keep your exact two-page layout. The tool selects your strongest existing content, adds the right keywords to the skills section, and exports an ATS-friendly Word file.</p>
+      <ul class="welcome-list">
+        <li><span>1</span>Your resume stays in this browser.</li>
+        <li><span>2</span>Nothing is invented — AI only selects and orders existing content.</li>
+        <li><span>3</span>Download DOCX or print a selectable-text PDF.</li>
+      </ul>
+      <div class="welcome-actions">
+        <button class="btn btn-primary" id="btn-welcome-starter" type="button">Use Naveen's starter resume</button>
+        <button class="btn btn-ghost" id="btn-welcome-import" type="button">Import my resume</button>
+      </div>
+      <p class="mini-note">Starter content includes experience, projects, and skills; contact details are blank until you add them.</p>
+    </div>
+  </div>
+
+  <!-- Contact -->
+  <div class="modal-backdrop" id="contact-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="contact-title">
+      <button class="modal-close" data-close="contact-modal" type="button" aria-label="Close">×</button>
+      <p class="eyebrow">Resume header</p>
+      <h2 id="contact-title">Contact details</h2>
+      <p class="muted">These stay in this browser. Keep the contact line short enough to fit on one line.</p>
+      <form id="contact-form">
+        <label class="field"><span>Name</span><input id="contact-name" name="name" autocomplete="name" required></label>
+        <div class="field-grid">
+          <label class="field"><span>Phone</span><input id="contact-phone" name="phone" autocomplete="tel" placeholder="(555) 123 4567"></label>
+          <label class="field"><span>Email</span><input id="contact-email" name="email" type="email" autocomplete="email" placeholder="you@example.com"></label>
+        </div>
+        <div class="field">
+          <span>Links</span>
+          <div class="link-rows" id="contact-links"></div>
+          <button class="link-btn" id="btn-add-link" type="button">+ Add another link</button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" type="button" data-close="contact-modal">Cancel</button>
+          <button class="btn btn-primary" type="submit">Save contact</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="modal-backdrop" id="settings-modal" hidden>
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <button class="modal-close" data-close="settings-modal" type="button" aria-label="Close">×</button>
+      <p class="eyebrow">Settings</p>
+      <h2 id="settings-title">DeepSeek &amp; resume data</h2>
+      <div class="settings-grid">
+        <section class="settings-section">
+          <h3>DeepSeek API</h3>
+          <p class="mini-note">The browser calls DeepSeek directly. The key is stored only in this browser's localStorage and is never sent anywhere else.</p>
+          <label class="field"><span>API key</span>
+            <div class="input-with-action">
+              <input id="setting-key" type="password" autocomplete="off" placeholder="sk-…">
+              <button class="link-btn" id="btn-toggle-key" type="button">Show</button>
+            </div>
+          </label>
+          <div class="field-grid">
+            <label class="field"><span>Model</span><input id="setting-model" list="model-options" autocomplete="off"><datalist id="model-options"><option value="deepseek-flash"></option><option value="deepseek-v4-pro"></option></datalist></label>
+            <label class="field"><span>Endpoint</span><input id="setting-endpoint" autocomplete="off"></label>
+          </div>
+          <div class="button-row">
+            <button class="btn btn-ghost btn-sm" id="btn-test-api" type="button">Test connection</button>
+            <span class="api-status" id="api-status"></span>
+          </div>
+          <p class="mini-note" id="api-note">DeepSeek's JSON mode is used. Thinking is disabled for speed and predictable output.</p>
+        </section>
+        <section class="settings-section">
+          <h3>Resume data</h3>
+          <p class="mini-note" id="settings-meta">—</p>
+          <div class="button-row wrap">
+            <button class="btn btn-ghost btn-sm" id="btn-settings-import" type="button">Import resume</button>
+            <button class="btn btn-ghost btn-sm" id="btn-export-json" type="button">Export JSON</button>
+            <button class="btn btn-ghost btn-sm" id="btn-reset-starter" type="button">Reset to starter</button>
+          </div>
+          <hr>
+          <h3>Privacy</h3>
+          <p class="mini-note">No backend, no account, no analytics. Resume content and settings are stored in localStorage. DeepSeek receives the job description and resume content only when you run AI selection; contact fields are stripped from the AI payload.</p>
+          <button class="btn btn-danger btn-sm" id="btn-clear-all" type="button">Clear all local data</button>
+        </section>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" type="button" data-close="settings-modal">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-settings" type="button">Save settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Help -->
+  <div class="modal-backdrop" id="help-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
+      <button class="modal-close" data-close="help-modal" type="button" aria-label="Close">×</button>
+      <p class="eyebrow">How it works</p>
+      <h2 id="help-title">ATS-first, not ATS-guaranteed.</h2>
+      <ol class="help-steps">
+        <li><strong>Paste the job description.</strong> The analyzer extracts hard skills, tools, title signals, and years of experience.</li>
+        <li><strong>Choose how to tailor.</strong> Local mode reorders and trims existing content. DeepSeek mode asks the model to select the strongest existing bullets, projects, and skills for that job.</li>
+        <li><strong>Review and export.</strong> The preview stays on two Letter pages. Download the DOCX or print a selectable-text PDF.</li>
+      </ol>
+      <p class="mini-note">The score is a transparent heuristic: 65% keyword coverage, 10% title fit, 25% format checks. It is not affiliated with Workday, Greenhouse, Lever, or any ATS vendor.</p>
+      <div class="modal-actions"><button class="btn btn-primary" data-close="help-modal" type="button">Got it</button></div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div class="modal-backdrop" id="loading-modal" hidden>
+    <div class="modal modal-loading" role="status" aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <h2 id="loading-title">Tailoring your resume</h2>
+      <p class="muted" id="loading-text">Analyzing the job description…</p>
+      <button class="btn btn-ghost btn-sm" id="btn-cancel-loading" type="button" hidden>Cancel</button>
+    </div>
+  </div>
+
+  <input type="file" id="file-input" accept=".docx,.json" hidden>
+  <div class="toast-root" id="toast-root" aria-live="polite"></div>
+
+  <script src="js/vendor/jszip.min.js"></script>
+  <script src="js/vendor/docx.iife.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

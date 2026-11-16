@@ -1,390 +1,145 @@
-# 🎯 Resume Customizer - AI-Powered Resume Tailoring Platform
+# Resume Studio
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![Python](https://img.shields.io/badge/python-3.11+-blue.svg?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com)
-[![JavaScript](https://img.shields.io/badge/javascript-%23323330.svg?style=for-the-badge&logo=javascript&logoColor=%23F7DF1E)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
+**ATS-first resume tailoring for Naveen Morla's two-page resume.**
 
-> **Transform your resume for every job opportunity with AI-powered customization**
+[Open the app](https://naveenmorla1901.github.io/resume_customizer/) · [How it works](#how-it-works) · [Run locally](#run-locally) · [Legacy app](#legacy-fastapi-app)
 
-Resume Customizer is a full-stack web application that intelligently customizes LaTeX-based resumes for specific job applications using multiple AI providers (Claude, Gemini, DeepSeek). Maintain professional formatting while tailoring content to match job descriptions perfectly.
+Resume Studio is a static, no-backend web app. Paste a job description, and it reorders and trims existing resume content to emphasize the job's requirements while preserving the original layout, fonts, section order, and two-page format.
 
-## 🌟 **Key Features**
+The app is plain HTML, CSS, and JavaScript in [`docs/`](docs/) and is deployed with GitHub Pages. There is no account, database, build step, or server.
 
-### **🤖 Multi-AI Provider Support**
-- **Claude Sonnet 3.5**: Advanced reasoning and technical understanding  
-- **Google Gemini 2.0 Flash**: Fast processing with excellent quality
-- **DeepSeek Chat**: Cost-effective alternative with solid performance
+## What it does
 
-### **📄 Professional PDF Generation**
-- LaTeX-based formatting for professional documents
-- Multiple fallback PDF generation services
-- Real-time PDF preview with retry logic
-- Automatic temporary file cleanup
+- **Keeps the resume's design.** Exports a DOCX that matches the original Word layout: Letter paper, the same margins, Calibri/Carlito typography, navy section headings, right-aligned dates, and the same section order.
+- **Emphasizes the latest role.** Lisinski Law Firm leads the experience section, with its most JD-relevant bullets first and its full bullet set kept whenever the two-page budget allows.
+- **Prioritizes relevant tools.** Existing skills are regrouped and filtered so JD-relevant tools lead; unrelated tools are removed rather than added.
+- **Protects the two-page limit.** A fit pass measures the rendered preview and trims the summary and expendable content (older-role bullets, project bullets, lower-priority skill groups) until both pages fit with a safety margin.
+- **Produces ATS-friendly output.** Single-column text, real DOCX paragraphs and bullet lists, no text boxes or images, and a selectable-text PDF path.
+- **Works without AI.** Local tailoring deterministically scores and selects existing content. DeepSeek is optional and only improves selection and ordering.
+- **Keeps data in the browser.** Resume content, the job description, settings, and the API key are stored in `localStorage`. There is no backend and no analytics.
 
-### **🎛️ Granular Control**  
-- **Selective Sections**: Choose which resume sections to modify (Experience, Skills, Projects, Education, Certifications)
-- **Intensity Control**: Adjust modification level from 10-90%
-- **Smart Replacement**: Always replaces temporary resume instead of creating duplicates
+## How it works
 
-### **🔐 Secure & Personal**
-- User authentication via Supabase
-- Personal resume libraries with secure storage
-- Row-level security for data isolation
+1. **Extract the job requirements.** The app pulls the title, years of experience, degree preference, tools, and ATS keywords from the pasted job description.
+2. **Select existing content.** Every bullet, project, and skill group in the master resume is scored against those requirements; certifications remain in the plan and are trimmed only if space runs out.
+3. **Optionally ask DeepSeek.** With an API key configured, DeepSeek receives the job description and the resume with phone, email, and link URLs removed. It returns a JSON plan containing bullet indices, project choices, skill selections, and a short summary. Every bullet, project, and skill choice is validated against the master resume, and the summary's numbers and technology terms are checked.
+4. **Fit to two pages.** The selected content is rendered in the exact page layout, measured, and trimmed if necessary.
+5. **Export.** Download a DOCX, print to PDF, or copy the plain text.
 
----
+The AI is deliberately constrained by its prompt: it may select, reorder, and trim existing content, but not invent employers, dates, degrees, metrics, tools, or achievements. The app enforces those constraints on every bullet, project, and skill choice, and falls back to a local summary if the AI's summary adds an unknown number or technology term. If the AI call fails, the local plan is used instead.
 
-## 🚀 **Quick Start**
+## Use the app
 
-### **Prerequisites**
-```bash
-# System Requirements
-- Python 3.11+
-- Node.js 16+ (optional, for frontend development)
-- Internet connection (for PDF generation services)
+After Pages is enabled and the workflow has run, the app is at **https://naveenmorla1901.github.io/resume_customizer/**.
 
-# Required Accounts
-- Supabase account (database & auth)
-- At least one AI provider API key
-```
+1. On first run, choose **Import my resume** and select the original `.docx` (or **Use Naveen's starter resume**).
+2. Open **Edit contact** and add the phone number, email, and links you want on the resume. The public starter ships with blank phone and email on purpose.
+3. Paste the full job description, including the title, requirements, and preferred qualifications.
+4. Leave **DeepSeek selection** on if an API key is saved; otherwise local tailoring runs.
+5. Select **Tailor my resume**.
+6. Review the match report, the changes list, and the live two-page preview.
+7. Select **Download DOCX** for applications that accept Word files, or **Print / PDF** and choose *Save as PDF*.
 
-### **Installation**
+For a PDF, use Letter paper, default margins, and 100% scale. Enable background graphics if your browser's preview drops the heading accents.
 
-1. **Clone & Setup**
-```bash
-git clone <your-repository-url>
-cd resume_customizer
-```
+### Importing and exporting
 
-2. **Install Dependencies**
-```bash
-pip install -r requirements.txt
-```
+- **Import `.docx`** extracts the resume's contact details, summary, experience, projects, skills, education, and certifications, then renders it with the built-in two-page template.
+- **Import `.json`** restores a previous export.
+- **Export JSON** saves a portable copy of the current master resume. Contact details are included, so keep the file private.
+- **Reset to starter** restores the public starter content without contact details.
+- **Clear all local data** removes the resume, plan, settings, API key, and saved job description from the browser.
 
-3. **Environment Configuration**
-```bash
-cp .env.example .env
-# Edit .env with your API keys (see Configuration section)
-```
+A full private master copy can live in `master/naveen-morla.json`. The `master/` directory is gitignored and is never published.
 
-4. **Database Setup**
-```sql
--- Run in your Supabase SQL editor (one-time setup)
--- Copy schema from SETUP.md or use Supabase migrations
-```
+## DeepSeek setup (optional)
 
-5. **Start Application**
-```bash
-uvicorn app.main:app --reload --port 8000
-```
+Open **Settings → DeepSeek API** and enter a key from [platform.deepseek.com](https://platform.deepseek.com/api_keys). The defaults are:
 
-6. **Access Application**
-- **Login**: http://localhost:8000/login
-- **Main App**: http://localhost:8000/app  
-- **API Docs**: http://localhost:8000/docs
+| Setting | Value |
+| --- | --- |
+| Model | `deepseek-flash` |
+| Endpoint | `https://api.deepseek.com/chat/completions` |
+| Thinking | Disabled |
+| Response format | JSON object |
 
----
+Use **Test connection** to verify the key. Requests go directly from the browser to DeepSeek; no server proxies them. The key is stored only in this browser's `localStorage`.
 
-## 🔧 **Configuration**
+Because the key is present in the browser, use a dedicated key with a spending limit, and avoid using the app on a shared computer. **Clear all local data** removes the key. If the browser or network blocks the request (CORS, offline, expired key, or insufficient balance), the app reports the error and you can retry or use local tailoring.
 
-### **Environment Variables (.env)**
-```bash
-# Supabase Configuration (Required)
-SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIs...
-SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIs...
+Without a key, everything except the DeepSeek selection step still works.
 
-# AI Provider API Keys (At least one required)
-CLAUDE_API_KEY=sk-ant-api03-...                    # https://console.anthropic.com/
-GEMINI_API_KEY=AIzaSy...                           # https://aistudio.google.com/app/apikey  
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx...            # https://platform.deepseek.com/api_keys
+## Two-page behavior
 
-# Application Settings
-DEBUG=True
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000
-TEMP_FILE_DIRECTORY=temp_files
-MAX_FILE_SIZE=10485760
-```
+The preview is the source of truth. The fitter reserves a safety margin to account for small browser-versus-Word layout differences. When page 1 overflows, it trims the summary, then reduces bullets from the oldest roles forward. When page 2 overflows, it trims project bullets, then whole projects, then skill items and groups, with certifications as a last resort.
 
-### **API Key Sources**
-| Provider | Get API Key From | Notes |
-|----------|------------------|-------|
-| **Claude** | https://console.anthropic.com/ | Premium quality, higher cost |
-| **Gemini** | https://aistudio.google.com/app/apikey | Good balance of speed/quality |
-| **DeepSeek** | https://platform.deepseek.com/api_keys | Most cost-effective option |
+The latest role is the last experience section to be reduced and is never dropped. If the content still cannot fit after every trim, the app keeps the result and shows a warning rather than silently cutting the remaining material.
 
-**⚠️ Important**: DeepSeek API keys must be 40+ characters long. If your key is shorter, create a new one.
+## Run locally
 
----
-
-## 🏗️ **Architecture**
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Frontend      │────│   FastAPI       │────│   Supabase      │
-│   (Vanilla JS)  │    │   Backend       │    │   Database      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                        │                        
-         │                        │                        
-         ▼                        ▼                        
-┌─────────────────┐    ┌─────────────────┐               
-│   PDF Preview   │    │   Multi-AI      │               
-│   (Retry Logic) │    │   Service Hub   │               
-└─────────────────┘    └─────────────────┘               
-                                │
-                                ▼
-                    ┌─────────────────────────────────┐
-                    │     AI Providers (3 Options)   │
-                    │  • Claude Sonnet 3.5           │
-                    │  • Google Gemini 2.0 Flash     │
-                    │  • DeepSeek Chat               │
-                    └─────────────────────────────────┘
-```
-
-### **Technology Stack**
-- **Backend**: FastAPI (Python 3.11+) with async support
-- **Frontend**: Vanilla JavaScript (ES6), HTML5, CSS3  
-- **Database**: Supabase (PostgreSQL with real-time features)
-- **Authentication**: Supabase Auth (JWT-based)
-- **PDF Generation**: Online LaTeX compilation services
-- **AI Integration**: Multi-provider support (Anthropic, Google, DeepSeek)
-
----
-
-## 📁 **Project Structure**
-
-```
-resume_customizer/
-├── 📄 README.md                    # This comprehensive guide
-├── 📄 SETUP.md                     # Database setup & troubleshooting  
-├── 📄 requirements.txt             # Python dependencies
-├── 📄 .env.example                 # Environment template
-├── 📄 docker-compose.yml           # Docker configuration
-│
-├── 📁 app/                         # FastAPI Backend
-│   ├── 📄 main.py                  # Application entry point
-│   ├── 📄 config.py                # Configuration management
-│   ├── 📁 api/                     # API Routes
-│   │   ├── 📄 auth.py              # Authentication endpoints
-│   │   ├── 📄 resumes.py           # Resume CRUD operations  
-│   │   └── 📄 customization.py     # AI customization endpoints
-│   ├── 📁 core/                    # Core Services
-│   │   ├── 📄 ai_service.py        # Multi-AI provider manager
-│   │   ├── 📄 pdf_generator.py     # PDF generation with retry logic
-│   │   └── 📄 supabase.py          # Database client
-│   ├── 📁 models/                  # Data models
-│   └── 📁 schemas/                 # API schemas
-│
-├── 📁 frontend/                    # Frontend Application  
-│   ├── 📄 index.html               # Main application
-│   ├── 📄 login.html               # Authentication page
-│   ├── 📁 css/                     # Stylesheets
-│   │   ├── 📄 main.css             # Global styles
-│   │   ├── 📄 app.css              # Application styles
-│   │   └── 📄 components.css       # Component styles
-│   └── 📁 js/                      # JavaScript modules
-│       ├── 📄 main.js              # Application controller
-│       ├── 📄 api.js               # API client
-│       └── 📁 components/          # UI components
-│
-└── 📁 temp_files/                  # Temporary PDF storage
-```
-
----
-
-## 🔄 **User Flow**
-
-### **1. Authentication**
-```
-Login Page → Credentials → Supabase Auth → JWT Token → Main App
-```
-
-### **2. Resume Management**  
-```
-Sidebar → Add Resume → LaTeX Input → Instant PDF Preview → Save
-```
-
-### **3. AI Customization**
-```
-Select Resume → Job Description → Choose AI Provider → Select Sections
-    ↓
-Customization Level → Generate → AI Processing → PDF Preview → Save/Download
-```
-
----
-
-## 🌐 **API Reference**
-
-### **Authentication**
-```http
-POST   /api/auth/signup          # Create account
-POST   /api/auth/login           # User login  
-GET    /api/auth/me              # Get user info
-POST   /api/auth/logout          # Logout user
-```
-
-### **Resume Management**
-```http
-GET    /api/resumes/             # List user resumes
-POST   /api/resumes/             # Create resume
-GET    /api/resumes/{id}         # Get specific resume
-PUT    /api/resumes/{id}         # Update resume
-DELETE /api/resumes/{id}         # Delete resume
-GET    /api/resumes/{id}/pdf     # Download PDF
-```
-
-### **AI Customization**
-```http
-GET    /api/customize/providers                  # Get available AI providers
-POST   /api/customize/                          # Customize resume
-GET    /api/customize/preview/{temp_id}         # Preview customized PDF
-POST   /api/customize/save-customized/{temp_id} # Save as permanent resume
-```
-
----
-
-## 🎛️ **Usage Guide**
-
-### **Creating Your First Resume**
-1. Login to the application
-2. Click "Add Resume" in the sidebar
-3. Paste your LaTeX resume code
-4. Save and view the PDF preview
-
-### **Customizing for a Job**
-1. Select an existing resume from the sidebar
-2. Paste the job description in the text area
-3. Choose which sections to modify (Experience, Skills, etc.)
-4. Select your preferred AI provider
-5. Adjust the customization intensity (10-90%)
-6. Click "Generate Customized Resume"
-7. Review the PDF preview
-8. Download or save permanently
-
-### **Managing Resumes**
-- **Original Resumes**: Your master resume templates
-- **Temporary Resume**: Auto-generated customizations (always replaced)
-- **Saved Customizations**: Permanently saved versions of customizations
-
----
-
-## 🔍 **Troubleshooting**
-
-For detailed troubleshooting, see **SETUP.md**.
-
-### **Quick Fixes**
-
-**DeepSeek API Not Working**
-- Get new API key from https://platform.deepseek.com/api_keys
-- Ensure key is 40+ characters long
-
-**PDF Preview Not Loading**
-- Check internet connection
-- Verify LaTeX content is valid
-- Clear browser cache
-
-**AI Provider Not Available**
-- Verify API key in .env file
-- Check API key format and credits
-
----
-
-## 🧪 **Testing**
+No install or build is required. Serve `docs/` over HTTP so ES modules and `fetch` behave normally:
 
 ```bash
-# Health check
-curl http://localhost:8000/api/health
-
-# Manual testing checklist
-- [ ] User authentication works
-- [ ] Resume creation and PDF preview
-- [ ] AI provider selection and customization
-- [ ] PDF download functionality
-- [ ] All three AI providers working
+python -m http.server 8765 --directory docs
 ```
 
----
+Then open <http://127.0.0.1:8765/>.
 
-## 🚀 **Deployment**
+Any static server works. Opening `docs/index.html` directly from disk may fail because browsers restrict ES module imports on `file://` URLs.
 
-### **Docker**
-```bash
-docker-compose up --build
+There are no npm dependencies at runtime. The DOCX exporter and ZIP writer are vendored in `docs/js/vendor/`, and the Carlito font files are vendored in `docs/fonts/`. The app has no CDN dependencies; every asset is served from the same static site.
+
+## Deploy to GitHub Pages
+
+The workflow at [`.github/workflows/pages.yml`](.github/workflows/pages.yml) publishes `docs/` whenever `main` changes.
+
+1. In the repository, open **Settings → Pages**.
+2. Set **Source** to **GitHub Actions**.
+3. Push to `main`, or run the **Deploy static resume tool to GitHub Pages** workflow manually.
+
+The site will be available at `https://<user>.github.io/resume_customizer/`. `docs/.nojekyll` disables Jekyll processing.
+
+## Project layout
+
+```text
+docs/
+├── index.html              # App shell and modals
+├── .nojekyll               # GitHub Pages: skip Jekyll
+├── css/styles.css          # UI, resume paper, print styles
+├── fonts/                  # Carlito (Calibri-metric) webfonts
+├── favicon.svg
+└── js/
+    ├── app.js              # UI controller
+    ├── ai.js               # DeepSeek client, prompt, plan validation
+    ├── ats.js              # JD extraction and ATS scoring
+    ├── tailor.js           # Local selection, plan materialization, text export
+    ├── fit.js              # Two-page fitting
+    ├── render.js           # Resume preview renderer and measurement
+    ├── docx-export.js      # Calibrated Word exporter
+    ├── docx-import.js      # DOCX/JSON import
+    ├── demo-data.js        # Public starter resume and sample JD
+    ├── store.js            # localStorage persistence
+    ├── taxonomy.js         # Skill/keyword taxonomy
+    ├── util.js
+    └── vendor/             # docx, JSZip, licenses
+master/
+└── naveen-morla.json       # Local-only full master (gitignored)
 ```
 
-### **Production Settings**
-```bash
-# Set in .env for production
-DEBUG=False
-ALLOWED_ORIGINS=https://yourdomain.com
-```
+## Privacy
 
----
+- Resume data never leaves the browser unless **DeepSeek selection** is enabled and a request is made.
+- When AI is enabled, the request contains the job description and the resume with phone, email, and link URLs removed; the name and link labels remain.
+- The API key is sent only to the configured endpoint as a bearer token.
+- There is no backend, account, cookie, or analytics.
+- The public repository contains a starter resume. Do not commit a private master resume or an API key.
 
-## 🤝 **Contributing**
+## Legacy FastAPI app
 
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/amazing-feature`
-3. Make changes and test thoroughly
-4. Submit pull request
+The repository still contains the earlier FastAPI + Supabase application in `app/`, `frontend/`, `requirements.txt`, and `docker-compose.yml`. It uses LaTeX/PDF generation, authentication, and server-side AI providers. It is not used by the static app.
 
-### **Code Standards**
-- **Python**: Black formatting, type hints, async/await
-- **JavaScript**: ES6+, JSDoc comments, error handling
-- **Git**: Conventional commits
+Setup and troubleshooting for that version are in [SETUP.md](SETUP.md). The static app requires none of it.
 
----
+## License
 
-## 📈 **Performance**
-
-- **API Response**: < 200ms for CRUD operations
-- **AI Processing**: 15-45 seconds (varies by provider)  
-- **PDF Generation**: 3-10 seconds with retry logic
-- **Frontend Load**: < 2 seconds
-
----
-
-## 🎯 **AI Provider Comparison**
-
-| Provider | Speed | Quality | Cost | Best For |
-|----------|-------|---------|------|---------|
-| **Claude Sonnet 3.5** | Medium | Excellent | High | Complex resumes, technical roles |
-| **Gemini 2.0 Flash** | Fast | Good | Medium | Quick customizations, general roles |
-| **DeepSeek Chat** | Fast | Good | Low | High-volume usage, cost optimization |
-
----
-
-## 📞 **Support**
-
-- **Documentation**: README.md (this file) and SETUP.md
-- **API Docs**: http://localhost:8000/docs (when running)
-- **Issues**: Check troubleshooting section or server logs
-
----
-
-## 📊 **Recent Updates**
-
-### **Latest Features** ✅
-- ✅ Multi-AI Provider Support (Claude, Gemini, DeepSeek)
-- ✅ Optimized Layout (33/67 split for better PDF preview)
-- ✅ Enhanced Error Handling with clear messages
-- ✅ Smart Temporary Resume Logic (always replaces existing)
-- ✅ Improved PDF Generation with retry logic
-
-### **Fixed Issues** ✅
-- ✅ DeepSeek API compatibility and validation
-- ✅ PDF preview layout optimization  
-- ✅ Temporary resume replacement logic
-- ✅ Enhanced logging and debugging
-
----
-
-## 📄 **License**
-
-MIT License - see LICENSE file for details.
-
----
-
-**🚀 Ready to transform your job applications? Get started now!**
-
-*Last Updated: All Issues Resolved - Production Ready*
+MIT. Vendored third-party licenses are in `docs/js/vendor/`.

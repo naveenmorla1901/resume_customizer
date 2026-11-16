@@ -1,6 +1,10 @@
 # 🔧 Resume Customizer - Setup & Troubleshooting Guide
 
-This guide covers database setup, configuration, and troubleshooting for the Resume Customizer application.
+> **Note:** This guide covers the **legacy FastAPI + Supabase application** (`app/`, `frontend/`).
+> The current tool is a static site in `docs/` with no backend, database, or build step.
+> For that app, see the main [README](README.md).
+
+This guide covers database setup, configuration, and troubleshooting for the legacy Resume Customizer application.
 
 ## 📋 **Table of Contents**
 - [Database Setup](#database-setup)

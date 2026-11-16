@@ -234,7 +234,7 @@ class DeepSeekProvider(AIProvider):
     
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.model = "deepseek-chat"
+        self.model = "deepseek-flash"
         self.endpoint = "https://api.deepseek.com/chat/completions"
         
         # Validate API key format
@@ -284,7 +284,8 @@ class DeepSeekProvider(AIProvider):
                 ],
                 "temperature": 0.7,
                 "max_tokens": 4000,
-                "stream": False
+                "stream": False,
+                "thinking": {"type": "disabled"}
             }
             
             logger.info(f"DeepSeek request payload keys: {list(payload.keys())}")
@@ -352,7 +353,7 @@ class DeepSeekProvider(AIProvider):
             raise Exception(f"DeepSeek API error: {str(e)}")
     
     def get_provider_name(self) -> str:
-        return "DeepSeek Chat"
+        return "DeepSeek Flash"
     
     def _build_prompt(self, latex_content: str, job_description: str, sections: str, percentage: int) -> str:
         return f"""Customize this LaTeX resume to better match the job description.
