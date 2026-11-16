@@ -4,9 +4,9 @@
 
 [Open the app](https://naveenmorla1901.github.io/resume_customizer/) · [How it works](#how-it-works) · [Run locally](#run-locally) · [Legacy app](#legacy-fastapi-app)
 
-Resume Studio is a static, no-backend web app. Paste a job description or its URL, and it selects, reorders, aligns, and trims existing resume content to emphasize the job's requirements while preserving the original layout, fonts, section order, and two-page format.
+Resume Studio is a static web app with an optional secure DeepSeek proxy. Paste a job description or its URL, and it selects, reorders, aligns, and trims existing resume content to emphasize the job's requirements while preserving the original layout, fonts, section order, and two-page format.
 
-The app is plain HTML, CSS, and JavaScript in [`docs/`](docs/) and is deployed with GitHub Pages. There is no account, database, build step, or server.
+The app is plain HTML, CSS, and JavaScript in [`docs/`](docs/) and is deployed with GitHub Pages. There is no account, database, or build step for the static app. Local tailoring needs no server at all. AI tailoring can use either a memory-only key entered in the browser or a small Cloudflare Worker that keeps the DeepSeek key in GitHub and Cloudflare secrets.
 
 ## What it does
 
@@ -21,14 +21,14 @@ The app is plain HTML, CSS, and JavaScript in [`docs/`](docs/) and is deployed w
 - **Protects the two-page limit.** A fit pass measures the rendered preview and trims the summary and expendable content (older-role bullets, project bullets, lower-priority skill groups) until both pages fit with a safety margin. A fill pass then adds a small, capped amount of vertical spacing so neither page ends with a large empty block; the font size does not change.
 - **Produces ATS-friendly output.** Single-column text, real DOCX paragraphs and bullet lists, no text boxes or images, and a selectable-text PDF path.
 - **Works without AI.** Local tailoring deterministically scores, selects, and aligns existing content. DeepSeek is optional and can improve selection plus JD-aligned wording.
-- **Keeps data in the browser.** Resume content, the job description, and non-secret settings are stored in `localStorage`. The DeepSeek API key is kept in memory for the current tab only. There is no backend and no analytics.
+- **Keeps data in the browser.** Resume content, the job description, and non-secret settings are stored in `localStorage`. In direct mode the DeepSeek API key is kept in memory for the current tab only. In secure proxy mode the key is stored as a GitHub Actions secret and injected into a Cloudflare Worker, so it never reaches the browser. There is no account and no analytics.
 
 ## How it works
 
 1. **Extract the job requirements.** The app pulls the title, years of experience, degree preference, tools, and ATS keywords from the pasted job description or an imported posting URL.
 2. **Select existing content.** Every bullet, project, and skill group in the master resume is scored against those requirements; certifications remain in the plan and are trimmed only if space runs out.
 3. **Align the summary and latest role.** Local mode promotes JD vocabulary only where the latest role already supports the same fact, such as “predictive forecasting” for an existing forecasting-model bullet. The summary may use tools that exist anywhere in the master resume.
-4. **Optionally ask DeepSeek.** With a key entered for this visit, DeepSeek receives the job description and the resume with phone, email, and link URLs removed. It returns a JSON plan containing bullet indices, project choices, skill selections, and a summary. When **Allow JD-aligned rewording** is on, it may also reword the summary and latest-role bullets, but every metric must already appear in that role and every tool must already appear in that same role.
+4. **Optionally ask DeepSeek.** With a key entered for this visit (direct mode) or a secure proxy URL (proxy mode), DeepSeek receives the job description and the resume with phone, email, and link URLs removed. It returns a JSON plan containing bullet indices, project choices, skill selections, and a summary. When **Allow JD-aligned rewording** is on, it may also reword the summary and latest-role bullets, but every metric must already appear in that role and every tool must already appear in that same role.
 5. **Fit and fill two pages.** The selected content is rendered in the exact page layout, measured, trimmed if necessary, then given a controlled amount of breathing room so both pages look full without changing the font.
 6. **Export.** Download a DOCX, print to PDF, or copy the plain text.
 
@@ -41,7 +41,7 @@ After Pages is enabled and the workflow has run, the app is at **https://naveenm
 1. On first run, choose **Import my resume** and select the original `.docx` (or **Use Naveen's starter resume**).
 2. Open **Edit contact** and add the phone number, email, and links you want on the resume. The public starter ships with blank phone and email on purpose.
 3. Paste the full job description, including the title, requirements, and preferred qualifications. You can also paste a job posting URL into the **Or paste a job posting URL** box, or directly into the description box; the app reads the full posting and replaces the URL with its text.
-4. Leave **DeepSeek selection** on if you entered an API key for this visit; otherwise local tailoring runs. The key is never carried over from a previous visit.
+4. Leave **DeepSeek selection** on if you configured a direct key for this visit or a secure proxy; otherwise local tailoring runs. A direct key is never carried over from a previous visit.
 5. Select **Tailor my resume**.
 6. Review the match report, the missing-keyword explanations, the changes list, and the live two-page preview.
 7. Select **Download DOCX** for applications that accept Word files, or **Print / PDF** and choose *Save as PDF*.
@@ -63,13 +63,24 @@ Terms outside the controlled skill taxonomy are listed separately for manual rev
 - **Import `.json`** restores a previous export.
 - **Export JSON** saves a portable copy of the current master resume. Contact details are included, so keep the file private.
 - **Reset to starter** restores the public starter content without contact details.
-- **Clear all local data** removes the resume, plan, saved settings, and job description from the browser and clears the in-memory API key.
+- **Clear all local data** removes the resume, plan, saved settings, proxy URL, and job description from the browser and clears the in-memory API key.
 
 A full private master copy can live in `master/naveen-morla.json`. The `master/` directory is gitignored and is never published.
 
 ## DeepSeek setup (optional)
 
-Open **Settings → DeepSeek API** and enter a key from [platform.deepseek.com](https://platform.deepseek.com/api_keys). The defaults are:
+AI tailoring is optional. Choose one connection mode in **Settings → DeepSeek API**:
+
+| Mode | Where the DeepSeek key lives | Use it when |
+| --- | --- | --- |
+| **Direct browser key** | JavaScript memory for the current tab only | You want zero setup and will paste a key each visit |
+| **Secure proxy (GitHub secret)** | A GitHub Actions secret copied into a Cloudflare Worker secret | You want to set the key once and reuse it from the deployed app |
+
+Local tailoring works in both modes and needs no key.
+
+### Option A: Direct browser key
+
+Open **Settings → DeepSeek API**, choose **Direct browser key**, and enter a key from [platform.deepseek.com](https://platform.deepseek.com/api_keys). The defaults are:
 
 | Setting | Value |
 | --- | --- |
@@ -78,15 +89,91 @@ Open **Settings → DeepSeek API** and enter a key from [platform.deepseek.com](
 | Thinking | Disabled |
 | Response format | JSON object |
 
-Use **Test connection** to verify the key. Requests go directly from the browser to DeepSeek; no server proxies them.
+Use **Test connection** to verify the key. Requests go directly from the browser to DeepSeek.
 
 The key is **memory-only**. It is kept in a JavaScript variable for the current tab, never written to `localStorage`, and never prefilled into the field. Reloading, closing the tab, or selecting **Forget key** removes it. Enter the key again on each visit. Because the key exists in the browser while you use the app, use a dedicated key with a spending limit and avoid shared computers.
 
+### Option B: Secure proxy from a GitHub secret (recommended for the deployed app)
+
+GitHub Pages is a static host: it **cannot read GitHub Actions secrets**. If a workflow injected `DEEPSEEK_API_KEY` into `docs/`, the key would be published in the JavaScript bundle. The secure bridge is the included Cloudflare Worker in [`worker/`](worker/):
+
+```text
+Browser (GitHub Pages)  →  Cloudflare Worker (holds the key)  →  api.deepseek.com
+```
+
+The browser sends the job description and resume content to the Worker. The Worker adds the DeepSeek key and forwards the request. The key never enters the browser, `localStorage`, the repository, or the published site.
+
+#### 1. Add the three GitHub repository secrets
+
+In the GitHub repository, open **Settings → Secrets and variables → Actions → New repository secret** and add:
+
+| Secret name | Value |
+| --- | --- |
+| `DEEPSEEK_API_KEY` | Your key from [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) |
+| `CLOUDFLARE_API_TOKEN` | A Cloudflare API token with Workers edit permission |
+| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
+
+To create the Cloudflare token:
+
+1. Sign in at [dash.cloudflare.com](https://dash.cloudflare.com/) (the free plan is enough).
+2. Open **My Profile → API Tokens → Create Token**.
+3. Use the **Edit Cloudflare Workers** template, select your account, and create the token.
+4. Copy the token once and save it as `CLOUDFLARE_API_TOKEN` in GitHub.
+
+To find the account ID, open **Workers & Pages** in Cloudflare; the **Account ID** is in the right-hand sidebar. Paste it as `CLOUDFLARE_ACCOUNT_ID`.
+
+Do not wrap secret values in quotes.
+
+#### 2. Deploy the Worker
+
+In GitHub, open **Actions → Deploy DeepSeek secure proxy → Run workflow**, select `main`, and run it.
+
+- The workflow deploys `worker/deepseek-proxy.mjs` with Wrangler and then stores `DEEPSEEK_API_KEY` as a Worker secret. Wait for both steps to finish green.
+- If this is the first Worker in the account and Cloudflare asks for a `workers.dev` subdomain, set one in **Workers & Pages** (for example `your-name`), then run the workflow again.
+- The Worker URL looks like `https://resume-deepseek-proxy.your-name.workers.dev`. Copy it from the workflow log or from **Workers & Pages → resume-deepseek-proxy**.
+
+The workflow also runs automatically when `worker/**` changes, but only after all three secrets exist. Before then, a push skips the deploy with a notice instead of failing.
+
+#### 3. Point the app at the proxy
+
+1. Open the deployed app.
+2. Open **Settings → DeepSeek API**.
+3. Set **Connection** to **Secure proxy (GitHub secret)**.
+4. Paste the Worker URL into **Proxy URL**.
+5. Select **Save settings**, then **Test connection**. The status should read **Connected via secure proxy**.
+
+The proxy URL is saved in `localStorage` so you do not paste it again. The DeepSeek key is never saved there.
+
+#### 4. Update or rotate the key
+
+To use a new DeepSeek key, update the `DEEPSEEK_API_KEY` repository secret and run **Actions → Deploy DeepSeek secure proxy → Run workflow** again. The workflow replaces the Worker secret. The proxy URL stays the same, so the app needs no change. Do this if the app reports that the proxy's key was rejected (401).
+
+#### Allowed origins and custom domains
+
+The Worker only accepts requests from the origins listed in [`worker/wrangler.toml`](worker/wrangler.toml):
+
+```text
+https://naveenmorla1901.github.io,http://127.0.0.1:8765,http://localhost:8765
+```
+
+An origin is the scheme plus host, with no path. If you fork the repo, use a custom domain, or serve the app from a different port, add that origin and redeploy the Worker. Requests without an `Origin` header are rejected.
+
+#### Limits and security
+
+- The Worker caps the request body at 1 MB, caps `max_tokens` at 4000, forces non-streaming responses, and allows only `deepseek-flash` and `deepseek-v4-pro`.
+- The Worker is stateless: it does not store resume content or job descriptions.
+- The Worker URL is public. The origin check stops other websites from calling it from a browser, but it is **not user authentication**; a direct HTTP client can spoof an `Origin` header. Use a dedicated DeepSeek key with a spending limit and treat the proxy URL as semi-public. The key itself remains secret. For stronger access control, put Cloudflare Access or your own authentication in front of the Worker.
+- The proxy URL is not sensitive, but it is also not a password. Do not put the DeepSeek key in the proxy URL.
+
+### Model and rewording
+
 The **Allow JD-aligned rewording of the summary and latest role** checkbox is on by default. When enabled, DeepSeek may mirror the job's vocabulary in those two places only. Validation requires every number to already appear in the latest role, and every tool to already appear in the same role; the summary may use tools from anywhere in the master resume. Turn it off for selection-only tailoring.
 
-If the browser or network blocks the request (CORS, offline, expired key, or insufficient balance), the app reports the error and you can retry or use local tailoring.
+### If a request fails
 
-Without a key, everything except the DeepSeek selection step still works.
+If the browser or network blocks the request (CORS, offline, expired key, or insufficient balance), the app reports the error and you can retry or use local tailoring. In proxy mode, a 401 means the Worker's DeepSeek key needs updating; a CORS or network error usually means the site origin is not in `ALLOWED_ORIGINS`.
+
+Without a key or proxy URL, everything except the DeepSeek selection step still works.
 
 ## Two-page behavior
 
@@ -122,6 +209,8 @@ The workflow at [`.github/workflows/pages.yml`](.github/workflows/pages.yml) pub
 
 The site will be available at `https://<user>.github.io/resume_customizer/`. `docs/.nojekyll` disables Jekyll processing.
 
+The Pages workflow only publishes `docs/`. It never receives the DeepSeek key. The optional proxy is deployed separately by **Deploy DeepSeek secure proxy**; see [Option B: Secure proxy from a GitHub secret](#option-b-secure-proxy-from-a-github-secret-recommended-for-the-deployed-app).
+
 ## Project layout
 
 ```text
@@ -147,6 +236,12 @@ docs/
     ├── taxonomy.js         # Skill/keyword taxonomy
     ├── util.js
     └── vendor/             # docx, JSZip, licenses
+worker/
+├── deepseek-proxy.mjs      # Cloudflare Worker: injects the DeepSeek key
+└── wrangler.toml           # Worker name, entry, allowed origins
+.github/workflows/
+├── pages.yml               # Deploys docs/ to GitHub Pages
+└── deploy-proxy.yml        # Deploys the Worker and its DeepSeek secret
 master/
 └── naveen-morla.json       # Local-only full master (gitignored)
 ```
@@ -155,9 +250,10 @@ master/
 
 - Resume data never leaves the browser unless **DeepSeek selection** is enabled and a request is made.
 - When AI is enabled, the request contains the job description and the resume with phone, email, and link URLs removed; the name and link labels remain.
-- The API key is memory-only and is sent only to the configured endpoint as a bearer token. It is never stored in `localStorage` and is not prefilled after a reload.
+- In **direct mode**, the API key is memory-only and is sent only to the configured endpoint as a bearer token. It is never stored in `localStorage` and is not prefilled after a reload.
+- In **secure proxy mode**, the browser sends the request to the Cloudflare Worker without the DeepSeek key. The Worker adds the key and forwards the request. The key is stored as a GitHub Actions secret and a Cloudflare Worker secret, never in `docs/` or browser storage. The proxy URL is saved in `localStorage`.
 - Loading a job URL sends that URL to Jina Reader (`r.jina.ai`), with a public read-only proxy (`allorigins.win`) and a direct fetch as fallbacks. Only the extracted job text is saved locally.
-- There is no backend, account, cookie, or analytics.
+- There is no account, cookie, or analytics. The optional Worker is stateless and stores no resume data.
 - The public repository contains a starter resume. Do not commit a private master resume or an API key.
 
 ## Legacy FastAPI app

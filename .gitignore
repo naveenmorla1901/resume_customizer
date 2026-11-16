@@ -2,3 +2,5 @@
 *.env.env
 venv/
 /master/
+worker/.dev.vars
+worker/.wrangler/

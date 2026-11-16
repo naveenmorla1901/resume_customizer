@@ -1,8 +1,9 @@
 # 🔧 Resume Customizer - Setup & Troubleshooting Guide
 
 > **Note:** This guide covers the **legacy FastAPI + Supabase application** (`app/`, `frontend/`).
-> The current tool is a static site in `docs/` with no backend, database, or build step.
-> For that app, see the main [README](README.md).
+> The current tool is a static site in `docs/` with no database or build step. It has an optional
+> Cloudflare Worker proxy for DeepSeek; the key is never published. For that app, see the main
+> [README](README.md).
 
 This guide covers database setup, configuration, and troubleshooting for the legacy Resume Customizer application.
 
@@ -17,11 +18,31 @@ python -m http.server 8765 --directory docs
 Open <http://127.0.0.1:8765/>. For GitHub Pages, set **Settings → Pages → Source** to **GitHub Actions** and push to `main`.
 
 - **Job descriptions:** paste the text or a posting URL. URLs are read through Jina Reader, with a public read-only proxy and direct fetch as fallbacks. The extracted text replaces the URL and is saved locally.
-- **DeepSeek key:** optional and memory-only. It is never written to `localStorage`, never prefilled, and is cleared by a reload or **Forget key**.
+- **DeepSeek key:** optional. Use **direct browser key** to keep a key in memory for the current tab only (paste it each visit), or **secure proxy** to keep the key in a GitHub secret and Cloudflare Worker secret (paste the proxy URL once). The key is never written to `localStorage` in either mode.
 - **ATS gaps:** the report distinguishes keywords that are in the master resume but were not selected from keywords that are absent entirely. Missing tools are not auto-added.
 - **Bold emphasis:** existing bold is preserved, and up to three JD-relevant terms per experience bullet are bolded in the preview, PDF, and DOCX without changing the font or layout.
 - **Experimentation:** when the job asks for experimentation and the master already documents A/B tests and hypothesis testing, the exact word is surfaced in the summary, skills, and the supported role. It is not added where the evidence is missing.
-- **Privacy:** resume data, the job description, and non-secret settings stay in the browser. Loading a URL shares that URL with the reader service; running DeepSeek shares the job description and resume content with the configured API endpoint.
+- **Privacy:** resume data, the job description, and non-secret settings stay in the browser. Loading a URL shares that URL with the reader service; running DeepSeek shares the job description and resume content with the configured API endpoint or secure proxy.
+
+### Secure proxy from GitHub Secrets
+
+GitHub Pages cannot read GitHub Actions secrets. Do not inject `DEEPSEEK_API_KEY` into `docs/`; the published JavaScript would contain it. The included Cloudflare Worker holds the key server-side:
+
+```text
+Browser → Cloudflare Worker (secret key) → api.deepseek.com
+```
+
+1. In GitHub, open **Settings → Secrets and variables → Actions** and add:
+   - `DEEPSEEK_API_KEY` — your DeepSeek key
+   - `CLOUDFLARE_API_TOKEN` — a Cloudflare token from the **Edit Cloudflare Workers** template
+   - `CLOUDFLARE_ACCOUNT_ID` — the account ID shown in Cloudflare's **Workers & Pages** sidebar
+2. Run **Actions → Deploy DeepSeek secure proxy → Run workflow**.
+3. Copy the deployed URL (`https://resume-deepseek-proxy.<your-subdomain>.workers.dev`) from the workflow log or Cloudflare's **Workers & Pages** page.
+4. In the app, open **Settings → DeepSeek API**, choose **Secure proxy (GitHub secret)**, paste the URL, select **Save settings**, then **Test connection**.
+
+To rotate the key, update `DEEPSEEK_API_KEY` in GitHub and rerun the proxy workflow. The proxy URL stays the same. If you fork the repo or use a custom domain, update `ALLOWED_ORIGINS` in `worker/wrangler.toml` and rerun the workflow.
+
+Full instructions, security limits, and troubleshooting are in [README → DeepSeek setup](README.md#deepseek-setup-optional).
 
 The sections below apply only to the legacy FastAPI app.
 

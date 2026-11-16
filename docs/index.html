@@ -168,7 +168,7 @@
     </main>
 
     <footer class="app-footer">
-      <span>Resume data stays in this browser. The API key is memory-only. Only the job description and resume content are sent to DeepSeek when you enable AI selection.</span>
+      <span>Resume data stays in this browser. In direct mode the API key is memory-only; in secure proxy mode the key stays in a server-side secret. Only the job description and resume content are sent to DeepSeek when you enable AI selection.</span>
       <span id="footer-version">Local-first · no sign-in</span>
     </footer>
   </div>
@@ -234,21 +234,33 @@
       <div class="settings-grid">
         <section class="settings-section">
           <h3>DeepSeek API</h3>
-          <p class="mini-note">The browser calls DeepSeek directly. The key is kept in memory for this tab only: it is never written to localStorage, never prefilled, and disappears when you reload or close the page.</p>
-          <label class="field"><span>API key</span>
-            <div class="input-with-action">
-              <input id="setting-key" type="password" autocomplete="new-password" placeholder="Enter a key for this visit">
-              <button class="link-btn" id="btn-toggle-key" type="button">Show</button>
-            </div>
+          <p class="mini-note">Direct mode keeps the key in memory for this tab. Secure proxy mode keeps the key in a server-side secret and never sends it to the browser.</p>
+          <label class="field"><span>Connection</span>
+            <select id="setting-connection">
+              <option value="direct">Direct browser key (memory only)</option>
+              <option value="proxy">Secure proxy (GitHub secret)</option>
+            </select>
           </label>
+          <label class="field"><span>Model</span><input id="setting-model" list="model-options" autocomplete="off"><datalist id="model-options"><option value="deepseek-flash"></option><option value="deepseek-v4-pro"></option></datalist></label>
+          <div id="direct-key-fields">
+            <label class="field"><span>API key</span>
+              <div class="input-with-action">
+                <input id="setting-key" type="password" autocomplete="new-password" placeholder="Enter a key for this visit">
+                <button class="link-btn" id="btn-toggle-key" type="button">Show</button>
+              </div>
+            </label>
+            <label class="field"><span>Endpoint</span><input id="setting-endpoint" autocomplete="off"></label>
+          </div>
+          <div id="proxy-fields" hidden>
+            <label class="field"><span>Proxy URL</span>
+              <input id="setting-proxy-url" autocomplete="off" placeholder="https://resume-deepseek-proxy.your-name.workers.dev">
+            </label>
+            <p class="mini-note">The proxy URL is public; the DeepSeek key stays in the server-side secret. Deploy the included Cloudflare Worker from the GitHub Actions tab, then paste its URL here. See <a href="https://github.com/naveenmorla1901/resume_customizer#option-b-secure-proxy-from-a-github-secret-recommended-for-the-deployed-app" target="_blank" rel="noopener">README → DeepSeek setup → Option B</a>.</p>
+          </div>
           <div class="button-row">
             <button class="btn btn-ghost btn-sm" id="btn-test-api" type="button">Test connection</button>
             <button class="link-btn" id="btn-forget-key" type="button" hidden>Forget key</button>
             <span class="api-status" id="api-status"></span>
-          </div>
-          <div class="field-grid">
-            <label class="field"><span>Model</span><input id="setting-model" list="model-options" autocomplete="off"><datalist id="model-options"><option value="deepseek-flash"></option><option value="deepseek-v4-pro"></option></datalist></label>
-            <label class="field"><span>Endpoint</span><input id="setting-endpoint" autocomplete="off"></label>
           </div>
           <label class="check-line"><input id="setting-rewrite" type="checkbox"> Allow JD-aligned rewording of the summary and latest role (same facts only)</label>
           <p class="mini-note" id="api-note">DeepSeek's JSON mode is used. Thinking is disabled for speed and predictable output. Missing tools are never invented; a keyword such as TypeScript is only shown if it exists in your resume.</p>
@@ -263,7 +275,7 @@
           </div>
           <hr>
           <h3>Privacy</h3>
-          <p class="mini-note">No backend, no account, no analytics. Resume content, the job description, and non-secret settings are stored in localStorage. The API key is memory-only. DeepSeek receives the job description and resume content only when you run AI selection; contact fields are stripped from the AI payload. When you load a job URL, that URL is read through Jina Reader or a public read-only proxy; the extracted text is saved locally.</p>
+          <p class="mini-note">No account, no analytics, and no resume database. Resume content, the job description, and non-secret settings are stored in localStorage. In direct mode the API key is memory-only. In secure proxy mode the key stays in a server-side secret and only the proxy URL is saved. DeepSeek receives the job description and resume content only when you run AI selection; contact fields are stripped from the AI payload. When you load a job URL, that URL is read through Jina Reader or a public read-only proxy; the extracted text is saved locally.</p>
           <button class="btn btn-danger btn-sm" id="btn-clear-all" type="button">Clear all local data</button>
         </section>
       </div>
@@ -282,7 +294,7 @@
       <h2 id="help-title">ATS-first, not ATS-guaranteed.</h2>
       <ol class="help-steps">
         <li><strong>Paste the job description or its URL.</strong> URLs are read through Jina Reader with a text fallback. The analyzer extracts hard skills, tools, title signals, and years of experience.</li>
-        <li><strong>Choose how to tailor.</strong> Local mode reorders, aligns, bolds, and trims existing content. DeepSeek can also reword the summary and latest role with the same facts. Missing tools are never invented.</li>
+        <li><strong>Choose how to tailor.</strong> Local mode reorders, aligns, bolds, and trims existing content. DeepSeek can also reword the summary and latest role with the same facts; use a memory-only key for this tab or the secure proxy so the key stays server-side. Missing tools are never invented.</li>
         <li><strong>Review the gap notes.</strong> Each missing keyword says whether it is in your master but not selected, or absent from your resume entirely. Experimentation is treated as supported when your resume already documents A/B tests and hypothesis testing. TypeScript, for example, is only added if your resume contains it.</li>
         <li><strong>Review and export.</strong> The preview fills two Letter pages without stretching the font. Download the DOCX or print a selectable-text PDF.</li>
       </ol>

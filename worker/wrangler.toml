@@ -1,0 +1,9 @@
+name = "resume-deepseek-proxy"
+main = "deepseek-proxy.mjs"
+compatibility_date = "2026-11-16"
+workers_dev = true
+
+[vars]
+# The GitHub Pages origin plus local testing. Add your custom domain here if
+# you serve the app from somewhere else, then redeploy the Worker.
+ALLOWED_ORIGINS = "https://naveenmorla1901.github.io,http://127.0.0.1:8765,http://localhost:8765"

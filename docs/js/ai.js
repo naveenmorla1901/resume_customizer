@@ -8,6 +8,10 @@ export const DEFAULT_AI_SETTINGS = {
   apiKey: '',
   model: 'deepseek-flash',
   endpoint: 'https://api.deepseek.com/chat/completions',
+  // "direct" keeps the key in memory for this tab. "proxy" calls the
+  // server-side worker and never puts the DeepSeek key in the browser.
+  connectionMode: 'direct',
+  proxyUrl: '',
   useAI: true,
   // Allows JD-aligned wording for the summary and the latest role only.
   // Facts, metrics, and tools are still validated against the master resume.
@@ -20,6 +24,36 @@ export class AiError extends Error {
     this.name = 'AiError';
     this.status = status;
   }
+}
+
+/**
+ * Normalize a proxy URL and reject insecure remote endpoints. The secure
+ * proxy keeps the DeepSeek key on the server; http is only useful for a local
+ * test server.
+ */
+export function normalizeProxyUrl(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
+  let url;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    throw new AiError('Enter a valid proxy URL, for example https://resume-deepseek-proxy.your-name.workers.dev.');
+  }
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(url.hostname);
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) {
+    throw new AiError('The proxy URL must use https://. Plain http:// is allowed only for localhost testing.');
+  }
+  if (url.username || url.password) {
+    throw new AiError('Do not put credentials in the proxy URL.');
+  }
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+}
+
+export function hasAiAccess(settings = {}) {
+  if (settings.connectionMode === 'proxy') return Boolean(String(settings.proxyUrl || '').trim());
+  return Boolean(String(settings.apiKey || '').trim());
 }
 
 function stripContact(master) {
@@ -51,7 +85,31 @@ function requestBody(settings, messages, maxTokens = 2600) {
   return body;
 }
 
+function connectionFor(settings = {}) {
+  if (settings.connectionMode === 'proxy') {
+    const proxyUrl = normalizeProxyUrl(settings.proxyUrl);
+    if (!proxyUrl) throw new AiError('Add the secure proxy URL in Settings, or use local tailoring.');
+    return {
+      url: proxyUrl,
+      headers: { 'Content-Type': 'application/json' },
+      proxy: true,
+    };
+  }
+  if (!settings.apiKey) {
+    throw new AiError('Enter a DeepSeek API key in Settings for this tab, or use the secure proxy.');
+  }
+  return {
+    url: settings.endpoint || DEFAULT_AI_SETTINGS.endpoint,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${settings.apiKey}`,
+    },
+    proxy: false,
+  };
+}
+
 async function callApi(settings, messages, maxTokens, signal) {
+  const connection = connectionFor(settings);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90000);
   const onAbort = () => controller.abort();
@@ -59,12 +117,9 @@ async function callApi(settings, messages, maxTokens, signal) {
   try {
     let response;
     try {
-      response = await fetch(settings.endpoint || DEFAULT_AI_SETTINGS.endpoint, {
+      response = await fetch(connection.url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${settings.apiKey}`,
-        },
+        headers: connection.headers,
         body: JSON.stringify(requestBody(settings, messages, maxTokens)),
         signal: controller.signal,
       });
@@ -72,7 +127,12 @@ async function callApi(settings, messages, maxTokens, signal) {
       if (error.name === 'AbortError') {
         throw new AiError('The AI request timed out. Try again or use the local tailoring option.', 0);
       }
-      throw new AiError('Could not reach the AI service. Check your connection, endpoint, and CORS access.', 0);
+      throw new AiError(
+        connection.proxy
+          ? 'Could not reach the secure proxy. Check the proxy URL and its allowed origins.'
+          : 'Could not reach the AI service. Check your connection, endpoint, and CORS access.',
+        0,
+      );
     }
 
     const raw = await response.text();
@@ -86,9 +146,13 @@ async function callApi(settings, messages, maxTokens, signal) {
     if (!response.ok) {
       const detail = data?.error?.message || data?.message || raw.slice(0, 240) || response.statusText;
       let message = detail;
-      if (response.status === 401) message = 'DeepSeek rejected the API key (401). Add a valid key in Settings.';
-      else if (response.status === 402) message = 'DeepSeek says the account has insufficient balance (402).';
+      if (response.status === 401) {
+        message = connection.proxy
+          ? 'The secure proxy’s DeepSeek key was rejected (401). Update DEEPSEEK_API_KEY in GitHub Secrets and redeploy the proxy.'
+          : 'DeepSeek rejected the API key (401). Add a valid key in Settings.';
+      } else if (response.status === 402) message = 'DeepSeek says the account has insufficient balance (402).';
       else if (response.status === 429) message = 'DeepSeek rate limit reached (429). Wait a moment and retry.';
+      else if (response.status === 403) message = detail || 'The AI service rejected the request (403).';
       else if (response.status === 400) message = `DeepSeek rejected the request: ${detail}`;
       throw new AiError(message, response.status);
     }
@@ -355,8 +419,10 @@ The keep arrays are 0-based indices into that item's master bullets. Keep every 
 }
 
 export async function requestAiPlan({ master, jd, report, settings, signal }) {
-  if (!settings?.apiKey) {
-    throw new AiError('Enter a DeepSeek API key in Settings for this tab, or use local tailoring.');
+  if (!hasAiAccess(settings)) {
+    throw new AiError(settings?.connectionMode === 'proxy'
+      ? 'Add the secure proxy URL in Settings, or use local tailoring.'
+      : 'Enter a DeepSeek API key in Settings for this tab, or use the secure proxy.');
   }
   const messages = buildPrompt(master, jd, report, settings);
   const { content, usage } = await callApi(settings, messages, 3200, signal);

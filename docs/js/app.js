@@ -2,6 +2,8 @@ import { SAMPLE_JD } from './demo-data.js';
 import {
   DEFAULT_AI_SETTINGS,
   AiError,
+  hasAiAccess,
+  normalizeProxyUrl,
   requestAiPlan,
   testConnection,
 } from './ai.js';
@@ -499,6 +501,17 @@ function saveContactFromForm(event) {
 /* Settings modal                                                      */
 /* ------------------------------------------------------------------ */
 
+function proxyModeSelected() {
+  return $('setting-connection').value === 'proxy';
+}
+
+function syncConnectionFields() {
+  const proxy = proxyModeSelected();
+  $('direct-key-fields').hidden = proxy;
+  $('proxy-fields').hidden = !proxy;
+  $('btn-forget-key').hidden = proxy || !state.settings.apiKey;
+}
+
 function syncSettingsUi() {
   const settings = state.settings;
   // Never prefill the key: it is intentionally invisible after it is entered.
@@ -508,8 +521,14 @@ function syncSettingsUi() {
   $('setting-key').type = 'password';
   $('setting-key').autocomplete = 'new-password';
   $('btn-toggle-key').textContent = 'Show';
-  setApiStatus(settings.apiKey ? 'Key loaded for this tab only. It is cleared on reload.' : 'No key in this tab.');
-  $('btn-forget-key').hidden = !settings.apiKey;
+  $('setting-connection').value = settings.connectionMode === 'proxy' ? 'proxy' : 'direct';
+  $('setting-proxy-url').value = settings.proxyUrl || '';
+  syncConnectionFields();
+  if (settings.connectionMode === 'proxy') {
+    setApiStatus(settings.proxyUrl ? 'Secure proxy configured. No key in this browser.' : 'Proxy URL not set.');
+  } else {
+    setApiStatus(settings.apiKey ? 'Key loaded for this tab only. It is cleared on reload.' : 'No key in this tab.');
+  }
   $('setting-rewrite').checked = settings.rewriteBullets !== false;
   $('ai-toggle').checked = Boolean(settings.useAI);
   updateAiHint();
@@ -525,25 +544,44 @@ function setApiStatus(text, kind = '') {
 function updateAiHint() {
   const hint = $('ai-hint');
   if (!hint) return;
-  if (state.settings.apiKey) {
+  const proxy = state.settings.connectionMode === 'proxy';
+  const configured = hasAiAccess(state.settings);
+  if (configured) {
     if (state.settings.useAI) {
       const rewrite = state.settings.rewriteBullets !== false
         ? ' It can also reword the summary and latest role while keeping the same facts.'
         : '';
-      hint.textContent = `DeepSeek (${state.settings.model || DEFAULT_AI_SETTINGS.model}) will select existing content for this job.${rewrite} The key is kept in memory for this tab only.`;
+      hint.textContent = proxy
+        ? `DeepSeek (${state.settings.model || DEFAULT_AI_SETTINGS.model}) will use the secure proxy. The key stays in the server-side secret.${rewrite}`
+        : `DeepSeek (${state.settings.model || DEFAULT_AI_SETTINGS.model}) will select existing content for this job.${rewrite} The key is kept in memory for this tab only.`;
     } else {
       hint.textContent = 'DeepSeek is off. Local tailoring will select, reorder, align, and trim existing content.';
     }
   } else {
-    hint.textContent = 'No API key in this tab. Local tailoring will reorder, align, and trim existing content.';
+    hint.textContent = proxy
+      ? 'Add the secure proxy URL in Settings. Local tailoring will be used until then.'
+      : 'No API key in this tab. Local tailoring will reorder, align, and trim existing content.';
   }
 }
 
 function saveSettingsFromForm() {
+  const proxy = proxyModeSelected();
+  let proxyUrl = '';
+  if (proxy) {
+    try {
+      proxyUrl = normalizeProxyUrl($('setting-proxy-url').value);
+    } catch (error) {
+      setApiStatus(error.message, 'bad');
+      return;
+    }
+  }
   const typedKey = $('setting-key').value.trim();
   state.settings = {
     ...state.settings,
-    apiKey: typedKey || state.settings.apiKey || '',
+    // Switching to the proxy clears the direct key from this tab.
+    apiKey: proxy ? '' : (typedKey || state.settings.apiKey || ''),
+    connectionMode: proxy ? 'proxy' : 'direct',
+    proxyUrl,
     model: $('setting-model').value.trim() || DEFAULT_AI_SETTINGS.model,
     endpoint: $('setting-endpoint').value.trim() || DEFAULT_AI_SETTINGS.endpoint,
     useAI: $('ai-toggle').checked,
@@ -553,12 +591,21 @@ function saveSettingsFromForm() {
   $('setting-key').value = '';
   updateAiHint();
   closeModal('settings-modal');
-  toast(
-    typedKey
-      ? 'Settings saved. The API key is kept in memory for this tab only.'
-      : 'Settings saved. The API key is never written to browser storage.',
-    'success',
-  );
+  if (proxy) {
+    toast(
+      proxyUrl
+        ? 'Settings saved. AI requests will use the secure proxy.'
+        : 'Settings saved. Add a proxy URL before using AI.',
+      proxyUrl ? 'success' : '',
+    );
+  } else {
+    toast(
+      typedKey
+        ? 'Settings saved. The API key is kept in memory for this tab only.'
+        : 'Settings saved. The API key is never written to browser storage.',
+      'success',
+    );
+  }
 }
 
 function forgetApiKey() {
@@ -573,21 +620,33 @@ function forgetApiKey() {
 
 async function testApiConnection() {
   const button = $('btn-test-api');
+  const proxy = proxyModeSelected();
+  let proxyUrl = '';
+  if (proxy) {
+    try {
+      proxyUrl = normalizeProxyUrl($('setting-proxy-url').value);
+    } catch (error) {
+      setApiStatus(error.message, 'bad');
+      return;
+    }
+  }
   const settings = {
     ...state.settings,
-    apiKey: $('setting-key').value.trim() || state.settings.apiKey || '',
+    apiKey: proxy ? '' : ($('setting-key').value.trim() || state.settings.apiKey || ''),
+    connectionMode: proxy ? 'proxy' : 'direct',
+    proxyUrl,
     model: $('setting-model').value.trim() || DEFAULT_AI_SETTINGS.model,
     endpoint: $('setting-endpoint').value.trim() || DEFAULT_AI_SETTINGS.endpoint,
   };
-  if (!settings.apiKey) {
-    setApiStatus('Enter an API key first.', 'bad');
+  if (!hasAiAccess(settings)) {
+    setApiStatus(proxy ? 'Enter the secure proxy URL first.' : 'Enter an API key first.', 'bad');
     return;
   }
   button.disabled = true;
   setApiStatus('Testing…');
   try {
     const result = await testConnection(settings);
-    setApiStatus(`Connected · ${result.latency} ms`, 'good');
+    setApiStatus(`Connected${proxy ? ' via secure proxy' : ''} · ${result.latency} ms`, 'good');
   } catch (error) {
     setApiStatus(error.message || 'Connection failed.', 'bad');
   } finally {
@@ -730,7 +789,7 @@ async function tailorResume() {
 
   try {
     const baseReport = buildAtsReport(state.master, jd);
-    const wantsAi = $('ai-toggle').checked && Boolean(state.settings.apiKey);
+    const wantsAi = $('ai-toggle').checked && hasAiAccess(state.settings);
     let nextPlan;
 
     if (wantsAi) {
@@ -754,8 +813,10 @@ async function tailorResume() {
         nextPlan.notes = [...(nextPlan.notes || []), 'DeepSeek was unavailable, so local selection was used.'];
       }
     } else {
-      if ($('ai-toggle').checked && !state.settings.apiKey) {
-        toast('No API key in this tab. Local tailoring is being used.', '');
+      if ($('ai-toggle').checked && !hasAiAccess(state.settings)) {
+        toast(state.settings.connectionMode === 'proxy'
+          ? 'No secure proxy URL set. Local tailoring is being used.'
+          : 'No API key in this tab. Local tailoring is being used.', '');
       }
       updateLoading('Selecting and aligning the strongest existing content…');
       nextPlan = buildLocalPlan(state.master, jd, baseReport);
@@ -998,11 +1059,26 @@ function bindEvents() {
   $('btn-ai-settings').addEventListener('click', () => {
     syncSettingsUi();
     openModal('settings-modal');
-    setTimeout(() => $('setting-key').focus(), 40);
+    setTimeout(() => {
+      const target = proxyModeSelected() ? $('setting-proxy-url') : $('setting-key');
+      target.focus();
+    }, 40);
   });
   $('btn-save-settings').addEventListener('click', saveSettingsFromForm);
   $('btn-test-api').addEventListener('click', testApiConnection);
   $('btn-forget-key').addEventListener('click', forgetApiKey);
+  $('setting-connection').addEventListener('change', () => {
+    syncConnectionFields();
+    if (proxyModeSelected()) {
+      setApiStatus($('setting-proxy-url').value.trim()
+        ? 'Secure proxy configured. No key in this browser.'
+        : 'Proxy URL not set.');
+    } else {
+      setApiStatus(state.settings.apiKey
+        ? 'Key loaded for this tab only. It is cleared on reload.'
+        : 'No key in this tab.');
+    }
+  });
   $('btn-toggle-key').addEventListener('click', () => {
     const input = $('setting-key');
     const show = input.type === 'password';
@@ -1013,7 +1089,7 @@ function bindEvents() {
   $('btn-export-json').addEventListener('click', exportJson);
   $('btn-reset-starter').addEventListener('click', resetToStarter);
   $('btn-clear-all').addEventListener('click', () => {
-    if (!window.confirm('Clear the resume, job description, plan, and saved settings from this browser? The in-memory API key is also cleared.')) return;
+    if (!window.confirm('Clear the resume, job description, plan, and saved settings from this browser? The in-memory API key and saved proxy URL are also cleared.')) return;
     clearAll();
     window.location.reload();
   });
@@ -1053,8 +1129,10 @@ function bindEvents() {
     state.settings = { ...state.settings, useAI: $('ai-toggle').checked };
     saveSettings(state.settings);
     updateAiHint();
-    if ($('ai-toggle').checked && !state.settings.apiKey) {
-      toast('Enter a DeepSeek API key in Settings for this tab, or leave AI off for local tailoring.', '');
+    if ($('ai-toggle').checked && !hasAiAccess(state.settings)) {
+      toast(state.settings.connectionMode === 'proxy'
+        ? 'Add the secure proxy URL in Settings, or leave AI off for local tailoring.'
+        : 'Enter a DeepSeek API key in Settings for this tab, or leave AI off for local tailoring.', '');
     }
   });
   $('btn-tailor').addEventListener('click', tailorResume);
