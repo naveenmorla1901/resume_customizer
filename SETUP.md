@@ -19,6 +19,8 @@ Open <http://127.0.0.1:8765/>. For GitHub Pages, set **Settings → Pages → So
 - **Job descriptions:** paste the text or a posting URL. URLs are read through Jina Reader, with a public read-only proxy and direct fetch as fallbacks. The extracted text replaces the URL and is saved locally.
 - **DeepSeek key:** optional and memory-only. It is never written to `localStorage`, never prefilled, and is cleared by a reload or **Forget key**.
 - **ATS gaps:** the report distinguishes keywords that are in the master resume but were not selected from keywords that are absent entirely. Missing tools are not auto-added.
+- **Bold emphasis:** existing bold is preserved, and up to three JD-relevant terms per experience bullet are bolded in the preview, PDF, and DOCX without changing the font or layout.
+- **Experimentation:** when the job asks for experimentation and the master already documents A/B tests and hypothesis testing, the exact word is surfaced in the summary, skills, and the supported role. It is not added where the evidence is missing.
 - **Privacy:** resume data, the job description, and non-secret settings stay in the browser. Loading a URL shares that URL with the reader service; running DeepSeek shares the job description and resume content with the configured API endpoint.
 
 The sections below apply only to the legacy FastAPI app.

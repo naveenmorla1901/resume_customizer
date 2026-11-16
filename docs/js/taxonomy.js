@@ -235,12 +235,12 @@ export const TAXONOMY = [
   { name: 'SPSS', category: 'BI & Visualization', aliases: ['spss'] },
 
   // Statistics
-  { name: 'A/B Testing', category: 'Statistics', aliases: ['a/b testing', 'ab testing', 'a b testing', 'split testing'], core: true },
+  { name: 'A/B Testing', category: 'Statistics', aliases: ['a/b testing', 'a/b test', 'a/b tests', 'ab testing', 'ab test', 'ab tests', 'a b testing', 'split testing', 'experimentation', 'experiment design'], core: true },
   { name: 'Hypothesis Testing', category: 'Statistics', aliases: ['hypothesis testing', 'statistical testing'] },
   { name: 'Regression Analysis', category: 'Statistics', aliases: ['regression analysis', 'regression', 'linear regression', 'logistic regression'] },
   { name: 'Time Series', category: 'Statistics', aliases: ['time series', 'time-series'], core: true },
   { name: 'Causal Inference', category: 'Statistics', aliases: ['causal inference', 'causal analysis'] },
-  { name: 'Experimentation', category: 'Statistics', aliases: ['experimentation', 'experiment design'] },
+  { name: 'Experimentation', category: 'Statistics', aliases: ['experimentation', 'experiment', 'experiments', 'experiment design', 'a/b testing', 'a/b test', 'a/b tests', 'ab testing', 'ab test', 'ab tests', 'split testing'] },
   { name: 'Statistical Modeling', category: 'Statistics', aliases: ['statistical modeling', 'statistical modelling', 'statistics'] },
   { name: 'Bayesian', category: 'Statistics', aliases: ['bayesian'] },
   { name: 'Segmentation', category: 'Statistics', aliases: ['segmentation', 'customer segmentation'] },

@@ -1,5 +1,6 @@
 import { TAXONOMY, CORE_SKILL_NAMES } from './taxonomy.js';
 import { analyzeJd, buildAtsReport, countTerm, resumeToText } from './ats.js';
+import { emphasizePlan } from './emphasis.js';
 import { normalizeText, unique } from './util.js';
 
 const TERM_BY_NAME = new Map(TAXONOMY.map((t) => [t.name.toLowerCase(), t]));
@@ -83,8 +84,16 @@ const ALIGNMENT_RULES = [
     label: 'statistical modeling / machine learning',
     jd: /\b(?:statistical modeling|machine learning|ml\b|predictive)\b/i,
     source: /\bstatistical and ML techniques\b/i,
-    target: 'statistical modeling and machine learning techniques',
+    target: '**statistical modeling and machine learning techniques**',
     already: /statistical modeling and machine learning techniques/i,
+  },
+  {
+    label: 'experimentation',
+    jd: /\b(?:experiment(?:ation|s|al)?|a\/b test(?:s|ing)?|split test(?:s|ing)?)\b/i,
+    source: /Ran (?:\*\*)?A\/B tests(?:\*\*)? and (?:\*\*)?hypothesis evaluations(?:\*\*)?/i,
+    target: 'Ran **A/B tests**, **experimentation**, and **hypothesis evaluations**',
+    already: /\bexperimentation\b/i,
+    anyRole: true,
   },
 ];
 
@@ -190,19 +199,80 @@ function pickSkills(master, analysis) {
 
   // Keep the section useful if an unusual resume has no matched groups.
   if (!result.length) {
-    return (master.skills || []).slice(0, 10).map((g) => ({ label: g.label, items: (g.items || []).slice(0, 10) }));
+    const fallback = (master.skills || []).slice(0, 10).map((g) => ({ label: g.label, items: (g.items || []).slice(0, 10) }));
+    return ensureExperimentationSkill(fallback, analysis).skills;
   }
-  return result.slice(0, 10);
+  return ensureExperimentationSkill(result.slice(0, 10), analysis).skills;
+}
+
+/**
+ * "A/B Testing" is the evidence; "Experimentation" is the broader JD term.
+ * When the job asks for experimentation and the master already documents A/B
+ * tests, show both phrases in the skills section instead of reporting a gap.
+ */
+export function ensureExperimentationSkill(skills = [], report = null) {
+  const wantsExperimentation = (report?.matched || []).some((keyword) => keyword.name === 'Experimentation');
+  if (!wantsExperimentation) return { skills, added: false };
+
+  const groups = (skills || []).map((group) => ({
+    ...group,
+    items: [...(group.items || [])],
+  }));
+  let added = false;
+  let represented = false;
+  for (const group of groups) {
+    group.items = group.items.map((item) => {
+      if (/\bexperimentation\b/i.test(item)) {
+        represented = true;
+        return item;
+      }
+      if (/\bA\/B Testing\b/i.test(item)) {
+        represented = true;
+        added = true;
+        return item.replace(/\bA\/B Testing\b/i, 'A/B Testing (Experimentation)');
+      }
+      return item;
+    });
+  }
+  if (!represented) {
+    let group = groups.find((g) => /statistics|algorithms/i.test(g.label));
+    if (!group) {
+      group = { label: 'Statistics & Algorithms', items: [] };
+      groups.push(group);
+    }
+    group.items.push('Experimentation');
+    added = true;
+  }
+  return { skills: groups, added };
+}
+
+function uniqueCoverage(text, keywords, baseText) {
+  let bonus = 0;
+  for (const keyword of keywords) {
+    const term = TERM_BY_NAME.get(keyword.name.toLowerCase());
+    if (!term) continue;
+    if (!countTerm(text, term)) continue;
+    if (countTerm(baseText, term) > 0) continue;
+    // This keyword appears only in a project, not in the summary, experience,
+    // skills, education, or certifications. Keeping that project protects a
+    // unique ATS match.
+    bonus += keyword.weight;
+  }
+  return bonus;
 }
 
 function pickProjects(master, analysis) {
   const keywords = analysis.keywords.filter((k) => k.score);
+  const baseText = resumeToText({ ...master, projects: [] });
   return ranked(master.projects || [], (project) => {
     const text = [project.name, project.tech, ...(project.bullets || [])].join(' ');
-    return textScore(text, keywords) + textScore(project.tech || '', keywords) * 0.5;
+    return textScore(text, keywords)
+      + textScore(project.tech || '', keywords) * 0.5
+      + uniqueCoverage(text, keywords, baseText) * 1.25;
   }).map(({ item: project }) => {
-    const bulletRank = ranked(project.bullets || [], (bullet) => textScore(bullet, keywords))
-      .map(({ item }) => item);
+    const bulletRank = ranked(project.bullets || [], (bullet) => (
+      textScore(bullet, keywords) + uniqueCoverage(bullet, keywords, baseText)
+    )).map(({ item }) => item);
     return { id: project.id, bullets: bulletRank.slice(0, 3) };
   });
 }
@@ -216,10 +286,11 @@ function pickExperience(master, analysis) {
   });
 }
 
-function alignText(text, jd) {
+function alignText(text, jd, { olderRole = false } = {}) {
   let value = String(text || '');
   const applied = [];
   for (const rule of ALIGNMENT_RULES) {
+    if (olderRole && !rule.anyRole) continue;
     if (rule.already && rule.already.test(value)) continue;
     if (!rule.jd.test(jd) || !rule.source.test(value)) continue;
     const next = value.replace(rule.source, rule.target);
@@ -231,16 +302,38 @@ function alignText(text, jd) {
   return { text: value, applied };
 }
 
-function alignLatestRole(experience, jd) {
+function alignRoles(experience, jd) {
   const roles = experience.map((role) => ({ ...role }));
   if (!roles.length) return { experience: roles, changes: [] };
   const changes = [];
-  roles[0].bullets = (roles[0].bullets || []).map((bullet) => {
-    const aligned = alignText(bullet, jd);
-    if (aligned.text !== bullet) {
-      changes.push({ bullet, after: aligned.text, labels: aligned.applied });
-    }
-    return aligned.text;
+  roles.forEach((role, index) => {
+    role.bullets = (role.bullets || []).map((bullet) => {
+      const aligned = alignText(bullet, jd, { olderRole: index > 0 });
+      if (aligned.text !== bullet) {
+        changes.push({ roleId: role.id, bullet, after: aligned.text, labels: aligned.applied });
+      }
+      return aligned.text;
+    });
+  });
+  return { experience: roles, changes };
+}
+
+/**
+ * Apply only the cross-role evidence rules (currently experimentation) to an
+ * AI-selected plan. This keeps the exact JD word where the source resume
+ * already proves it, without rewriting the AI's latest-role wording.
+ */
+export function alignEvidenceRoles(experience = [], jd = '') {
+  const roles = experience.map((role) => ({ ...role }));
+  const changes = [];
+  roles.forEach((role) => {
+    role.bullets = (role.bullets || []).map((bullet) => {
+      const aligned = alignText(bullet, jd, { olderRole: true });
+      if (aligned.text !== bullet) {
+        changes.push({ roleId: role.id, bullet, after: aligned.text, labels: aligned.applied });
+      }
+      return aligned.text;
+    });
   });
   return { experience: roles, changes };
 }
@@ -276,14 +369,19 @@ function chooseSkills(analysis, master) {
     'BI & Visualization', 'Databases', 'DevOps & MLOps', 'Statistics', 'Data & Analytics',
   ];
   const chosen = [];
+  // Experimentation is a high-signal growth/analytics term. If the job asks
+  // for it and the resume already proves it through A/B tests, keep the word
+  // in the page-one summary instead of leaving it only in a skills group.
+  const experimentation = matched.find((k) => k.name === 'Experimentation');
+  if (experimentation) chosen.push(experimentation.name);
   for (const category of priority) {
     for (const keyword of matched.filter((k) => k.category === category)) {
-      if (chosen.length >= 8) break;
+      if (chosen.length >= 9) break;
       if (!chosen.some((c) => c.toLowerCase() === keyword.name.toLowerCase())) chosen.push(keyword.name);
     }
   }
   for (const keyword of matched) {
-    if (chosen.length >= 8) break;
+    if (chosen.length >= 9) break;
     if (!chosen.some((c) => c.toLowerCase() === keyword.name.toLowerCase())) chosen.push(keyword.name);
   }
   if (!chosen.length) return 'Python, SQL, machine learning, and cloud data platforms';
@@ -372,7 +470,7 @@ export function shrinkSummary(summary, maxChars = 480) {
 export function buildLocalPlan(master, jd, report = null) {
   const analysis = report || buildAtsReport(master, jd);
   const summary = buildLocalSummary(master, analysis);
-  const aligned = alignLatestRole(pickExperience(master, analysis), jd);
+  const aligned = alignRoles(pickExperience(master, analysis), jd);
   const projects = pickProjects(master, analysis);
   const skills = pickSkills(master, analysis);
   const notes = [
@@ -380,10 +478,13 @@ export function buildLocalPlan(master, jd, report = null) {
   ];
   if (aligned.changes.length) {
     notes.push(
-      `Aligned the latest role with ${unique(aligned.changes.flatMap((change) => change.labels)).join(', ')} wording already supported by that role. No new tools or metrics were added.`,
+      `Aligned roles with ${unique(aligned.changes.flatMap((change) => change.labels)).join(', ')} wording where the same facts already existed. No new tools or metrics were added.`,
     );
   }
-  return {
+  if ((analysis.matched || []).some((keyword) => keyword.name === 'Experimentation')) {
+    notes.push('Kept Experimentation visible because your resume already documents A/B tests and hypothesis testing.');
+  }
+  return emphasizePlan({
     source: 'local',
     summary,
     experience: aligned.experience,
@@ -391,7 +492,7 @@ export function buildLocalPlan(master, jd, report = null) {
     skills,
     alignment: aligned.changes,
     notes,
-  };
+  }, analysis);
 }
 
 export function normalizePlan(plan = {}, master = {}) {

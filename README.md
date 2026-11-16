@@ -13,7 +13,10 @@ The app is plain HTML, CSS, and JavaScript in [`docs/`](docs/) and is deployed w
 - **Keeps the resume's design.** Exports a DOCX that matches the original Word layout: Letter paper, the same margins, Calibri/Carlito typography, navy section headings, right-aligned dates, and the same section order.
 - **Reads a job posting URL.** Paste a link instead of the description; the app reads the full posting through Jina Reader with public-reader and direct-fetch fallbacks. The URL is replaced by the extracted text so it can be reviewed and saved.
 - **Emphasizes the latest role.** Lisinski Law Firm leads the experience section, with its most JD-relevant bullets first and its full bullet set kept whenever the two-page budget allows. JD wording is added only where that role already supports the same fact.
+- **Bolds the skills that matter.** Existing bold is preserved. Up to three JD-relevant terms per experience bullet are bolded in the preview, PDF, and DOCX, so a recruiter can scan the important tools without the font or layout changing.
 - **Prioritizes relevant tools.** Existing skills are regrouped and filtered so JD-relevant tools lead; unrelated tools are removed rather than added.
+- **Uses experimentation evidence honestly.** When a job asks for experimentation and the resume already documents A/B tests and hypothesis testing, the exact word is surfaced in the summary, skills, and the relevant older role. It is never inserted into a role that lacks that evidence.
+- **Protects project keywords.** Projects and project bullets that are the only source of a JD keyword are ranked first, so trimming does not discard the only match.
 - **Explains ATS gaps.** Every missing keyword says whether it is in the master resume but was not selected, or absent from the resume entirely. Missing tools such as TypeScript are never added silently.
 - **Protects the two-page limit.** A fit pass measures the rendered preview and trims the summary and expendable content (older-role bullets, project bullets, lower-priority skill groups) until both pages fit with a safety margin. A fill pass then adds a small, capped amount of vertical spacing so neither page ends with a large empty block; the font size does not change.
 - **Produces ATS-friendly output.** Single-column text, real DOCX paragraphs and bullet lists, no text boxes or images, and a selectable-text PDF path.
@@ -137,6 +140,7 @@ docs/
     ├── render.js           # Resume preview renderer and measurement
     ├── docx-export.js      # Calibrated Word exporter
     ├── docx-import.js      # DOCX/JSON import
+    ├── emphasis.js         # Capped JD-keyword bolding for existing bullets
     ├── jd-import.js        # Job-posting URL reader and HTML cleanup
     ├── demo-data.js        # Public starter resume and sample JD
     ├── store.js            # localStorage persistence; memory-only API key

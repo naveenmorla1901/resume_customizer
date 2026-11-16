@@ -11,6 +11,7 @@ import {
 } from './ats.js';
 import { createDocxBlob } from './docx-export.js';
 import { importResumeFile } from './docx-import.js';
+import { emphasizePlan } from './emphasis.js';
 import { SAFETY_PX, basePlan, fitPlan } from './fit.js';
 import {
   applyResumeFill,
@@ -210,7 +211,12 @@ function updatePreviewStatus(displayPlan, measurement) {
 }
 
 function renderPreview() {
-  const displayPlan = state.plan || basePlan(state.master);
+  let displayPlan = state.plan || basePlan(state.master);
+  if (state.report && displayPlan.source !== 'base') {
+    // Older saved plans may predate the emphasis pass. Reapply it so the
+    // preview, PDF, and DOCX all keep the same bold terms.
+    displayPlan = emphasizePlan(displayPlan, state.report);
+  }
   state.plan = displayPlan;
   renderResume($('preview-mount'), state.master, displayPlan);
   const filled = applyResumeFill($('preview-mount'));
