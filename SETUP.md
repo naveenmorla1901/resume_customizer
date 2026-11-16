@@ -36,6 +36,7 @@ Browser → Cloudflare Worker (secret key) → api.deepseek.com
    - `DEEPSEEK_API_KEY` — your DeepSeek key
    - `CLOUDFLARE_API_TOKEN` — a Cloudflare token from the **Edit Cloudflare Workers** template
    - `CLOUDFLARE_ACCOUNT_ID` — the account ID shown in Cloudflare's **Workers & Pages** sidebar
+   Paste the values without surrounding quotes or leading/trailing spaces. The workflow trims whitespace defensively.
 2. Run **Actions → Deploy DeepSeek secure proxy → Run workflow**.
 3. Copy the deployed URL (`https://resume-deepseek-proxy.<your-subdomain>.workers.dev`) from the workflow log or Cloudflare's **Workers & Pages** page.
 4. In the app, open **Settings → DeepSeek API**, choose **Secure proxy (GitHub secret)**, paste the URL, select **Save settings**, then **Test connection**.

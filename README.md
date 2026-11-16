@@ -122,7 +122,7 @@ To create the Cloudflare token:
 
 To find the account ID, open **Workers & Pages** in Cloudflare; the **Account ID** is in the right-hand sidebar. Paste it as `CLOUDFLARE_ACCOUNT_ID`.
 
-Do not wrap secret values in quotes.
+Do not wrap secret values in quotes. Do not include leading or trailing spaces; the workflow trims whitespace defensively, but the cloud dashboard will reject a malformed value.
 
 #### 2. Deploy the Worker
 
