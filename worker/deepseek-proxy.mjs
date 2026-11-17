@@ -12,6 +12,7 @@ const ALLOWED_MODELS = new Set(['deepseek-flash', 'deepseek-v4-pro']);
 
 const PDF_ROUTE = '/tailor.pdf';
 const MASTER_ROUTE = '/master';
+const HEALTH_ROUTE = '/health';
 const APP_URL = 'https://naveenmorla1901.github.io/resume_customizer/';
 const PROXY_URL = 'https://resume-deepseek-proxy.morla-naveen1901.workers.dev';
 const MAX_PDF_BODY_BYTES = 128 * 1024;
@@ -231,8 +232,25 @@ async function handleMaster(request, env) {
   });
 }
 
-async function handleTailorPdf(request, env) {
-  const auth = authorized(request, env);
+async function handleHealth(env) {
+  let masterStored = false;
+  if (env.RESUME_MASTER) {
+    try {
+      masterStored = Boolean(await env.RESUME_MASTER.get('master'));
+    } catch {
+      masterStored = false;
+    }
+  }
+  return apiJson({
+    ok: true,
+    tokenConfigured: Boolean(env.PDF_API_TOKEN),
+    kvConfigured: Boolean(env.RESUME_MASTER),
+    browserConfigured: Boolean(env.BROWSER),
+    masterStored,
+  });
+}
+
+async function handleTailorPdf(request, env) {  const auth = authorized(request, env);
   if (!auth.ok) return apiError(auth.message, auth.status);
   if (request.method !== 'POST') return apiError('Method not allowed. Use POST.', 405);
 
@@ -293,6 +311,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === PDF_ROUTE) return handleTailorPdf(request, env);
     if (url.pathname === MASTER_ROUTE) return handleMaster(request, env);
+    if (url.pathname === HEALTH_ROUTE) return handleHealth(env);
 
     const origin = request.headers.get('Origin') || '';
     const allowed = allowedOrigins(env);

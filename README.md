@@ -188,7 +188,7 @@ Create a long random token and add it as the `PDF_API_TOKEN` repository secret. 
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Add the output as a GitHub Actions secret, then re-run **Deploy DeepSeek secure proxy**.
+Add the output as a GitHub Actions secret, then re-run **Deploy DeepSeek secure proxy**. Check `GET /health` on the Worker; it reports whether the token, KV binding, Browser Rendering, and stored master are configured.
 
 ### 2. Store the private master (one time)
 
