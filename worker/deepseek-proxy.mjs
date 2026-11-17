@@ -135,11 +135,13 @@ function sanitizeFilename(value, fallback) {
   const requested = String(value || '').trim();
   const base = requested
     .replace(/\.pdf$/i, '')
+    .replace(/["\\\r\n\t]+/g, ' ')
     .replace(/[^a-z0-9._ -]+/gi, '_')
     .replace(/\.{2,}/g, '.')
-    .replace(/[\s_]+/g, '_')
-    .replace(/^[._-]+|[._-]+$/g, '')
-    .slice(0, 120);
+    .replace(/\s+/g, ' ')
+    .replace(/^[._ -]+|[._ -]+$/g, '')
+    .slice(0, 120)
+    .trim();
   return `${base || fallback}.pdf`;
 }
 

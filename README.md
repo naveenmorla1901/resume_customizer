@@ -225,7 +225,7 @@ Invoke-WebRequest -Method Post `
   -OutFile 'Naveen_Morla_Acme_Data_Engineer.pdf'
 ```
 
-`ai: false` uses deterministic local tailoring. `ai: true` uses the existing secure DeepSeek proxy. `filename` is optional; if omitted, the Worker uses `Naveen_Morla_Resume_<Company>_<date>.pdf`. The PDF comes from the same live preview, so it keeps the two-page layout, clickable project links, and the “Private project” label.
+`ai: false` uses deterministic local tailoring. `ai: true` uses the existing secure DeepSeek proxy. `filename` is optional; if omitted, the Worker uses `Naveen_Morla_Resume_<Company>_<date>.pdf`. A requested filename keeps its spaces, drops unsafe characters, and always ends in `.pdf`. The PDF comes from the same live preview, so it keeps the two-page layout, clickable project links, and the “Private project” label.
 
 The endpoint uses Cloudflare Browser Rendering. The Workers Free plan includes 10 browser-minutes per day; Workers Paid removes that cap. The master resume stays in Cloudflare KV and is never committed to the repository.
 
