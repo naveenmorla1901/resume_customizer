@@ -236,10 +236,12 @@ The Worker also exposes a remote MCP server at `/mcp`. This is the efficient way
 Claude's custom connectors support fixed request headers, so no OAuth setup is needed:
 
 1. In Claude, open **Customize → Connectors → Add custom connector**.
-2. Name it `Resume Studio`.
-3. URL: `https://resume-deepseek-proxy.morla-naveen1901.workers.dev/mcp`
-4. Under **Request headers**, add `Authorization` with the value `Bearer <PDF_API_TOKEN>`.
-5. Save, then enable the connector in the conversation.
+2. Name it `Resume Studio`; URL: `https://resume-deepseek-proxy.morla-naveen1901.workers.dev/mcp`; click Continue.
+3. Under **Authentication**, choose **No sign-in**. Claude detects `Sign in now` from the server's 401 response, but that is wrong for this token setup.
+4. Under **Request headers**, choose **authorization** from the header-name list — do not pick `Custom header...`, which needs Anthropic approval. Set the value to `Bearer <PDF_API_TOKEN>` and keep **Required** checked.
+5. Click **Add**, then enable the connector in the conversation via **+ → Connectors**.
+
+If a `Resume Studio` connector already exists with `Sign-in expired`, remove it first (three-dot menu → Remove) and add it again; authentication settings cannot be edited after saving.
 
 The server exposes two tools:
 
