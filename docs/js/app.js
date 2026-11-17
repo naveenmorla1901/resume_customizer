@@ -47,6 +47,7 @@ import {
 } from './jd-import.js';
 import {
   buildLocalPlan,
+  defaultProjects,
   materializePlan,
   planStats,
 } from './tailor.js';
@@ -145,11 +146,17 @@ function setBadge(node, text, kind = '') {
 /* Resume header / master card                                         */
 /* ------------------------------------------------------------------ */
 
+function projectMeta(master) {
+  const total = master.projects?.length || 0;
+  if (!total) return '0 projects';
+  const shown = defaultProjects(master).length;
+  return total > shown ? `${shown} of ${total} projects shown` : `${total} project${total === 1 ? '' : 's'}`;
+}
+
 function updateMasterCard() {
   const { master } = state;
   const profile = master.profile || {};
   const roles = master.experience?.length || 0;
-  const projects = master.projects?.length || 0;
   const skills = (master.skills || []).reduce((sum, group) => sum + (group.items?.length || 0), 0);
   const isImported = Boolean(master.meta?.imported);
   const isStarter = Boolean(master.meta?.starter) && !isImported;
@@ -158,10 +165,11 @@ function updateMasterCard() {
   setBadge($('resume-badge'), isImported ? 'Imported' : isStarter ? 'Starter' : 'Master', 'badge-muted');
 
   const updated = master.meta?.updated ? ` · updated ${master.meta.updated}` : '';
-  $('resume-meta').textContent = `${roles} role${roles === 1 ? '' : 's'} · ${projects} project${projects === 1 ? '' : 's'} · ${skills} skills${updated}`;
+  const projects = projectMeta(master);
+  $('resume-meta').textContent = `${roles} role${roles === 1 ? '' : 's'} · ${projects} · ${skills} skills${updated}`;
 
   $('contact-warning').hidden = hasContact(master);
-  $('settings-meta').textContent = `${profile.name || 'Resume'} · ${roles} roles · ${projects} projects · ${skills} skills${updated}`;
+  $('settings-meta').textContent = `${profile.name || 'Resume'} · ${roles} roles · ${projects} · ${skills} skills${updated}`;
 }
 
 function requireContact(action) {

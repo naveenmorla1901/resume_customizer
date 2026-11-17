@@ -175,6 +175,12 @@ export function normalizeImportedMaster(raw = {}) {
       name: String(project.name || ''),
       tech: String(project.tech || project.technologies || ''),
       bullets: (Array.isArray(project.bullets) ? project.bullets : []).map(String).filter(Boolean),
+      // Keep library metadata so re-importing an exported master JSON does not
+      // drop project links or the featured/default-project flags.
+      ...(project.link ? { link: String(project.link) } : {}),
+      ...(project.url ? { url: String(project.url) } : {}),
+      ...(project.linkLabel ? { linkLabel: String(project.linkLabel) } : {}),
+      ...(typeof project.featured === 'boolean' ? { featured: project.featured } : {}),
     }))
     .filter((project) => project.name);
   const skills = (Array.isArray(data.skills) ? data.skills : [])

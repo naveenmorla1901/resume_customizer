@@ -173,7 +173,7 @@ function buildNumbering(docx) {
 
 export function buildResumeDocx(docx, master, tailored, opts = {}) {
   const {
-    Document, Paragraph, TextRun, AlignmentType,
+    Document, Paragraph, TextRun, AlignmentType, ExternalHyperlink,
   } = docx;
   const data = tailored || master;
   const profile = master.profile;
@@ -240,26 +240,59 @@ export function buildResumeDocx(docx, master, tailored, opts = {}) {
   children.push(sectionHeading(docx, 'PROJECTS', { pageBreakBefore: true, extra: twoExtra }));
   for (const project of data.projects || []) {
     const masterProject = (master.projects || []).find((p) => p.id === project.id) || project;
-    children.push(new Paragraph({
-      keepNext: true,
-      spacing: { before: 88 + twoExtra, after: 12 + twoExtra },
-      children: [
-        new TextRun({
+    const link = String(masterProject.link || masterProject.url || '').trim();
+    const linkLabel = masterProject.linkLabel || (/github\.com/i.test(link) ? 'GitHub' : 'Live');
+    const titleRuns = [];
+    if (link) {
+      titleRuns.push(new ExternalHyperlink({
+        link,
+        children: [new TextRun({
           text: masterProject.name,
           bold: true,
           underline: {},
           size: 20,
           color: NAVY,
           font: FONT,
+        })],
+      }));
+    } else {
+      titleRuns.push(new TextRun({
+        text: masterProject.name,
+        bold: true,
+        underline: {},
+        size: 20,
+        color: NAVY,
+        font: FONT,
+      }));
+    }
+    if (masterProject.tech) {
+      titleRuns.push(new TextRun({
+        text: ` | ${masterProject.tech}`,
+        italics: true,
+        size: 18,
+        font: FONT,
+        color: BODY,
+      }));
+    }
+    if (link) {
+      titleRuns.push(
+        new TextRun({ text: ' | ', size: 18, font: FONT, color: BODY }),
+        new ExternalHyperlink({
+          link,
+          children: [new TextRun({
+            text: linkLabel,
+            size: 18,
+            font: FONT,
+            color: NAVY,
+            underline: {},
+          })],
         }),
-        new TextRun({
-          text: ` | ${masterProject.tech}`,
-          italics: true,
-          size: 18,
-          font: FONT,
-          color: BODY,
-        }),
-      ],
+      );
+    }
+    children.push(new Paragraph({
+      keepNext: true,
+      spacing: { before: 88 + twoExtra, after: 12 + twoExtra },
+      children: titleRuns,
     }));
     for (const bullet of project.bullets || []) {
       children.push(bulletParagraph(docx, bullet, { extra: twoExtra }));

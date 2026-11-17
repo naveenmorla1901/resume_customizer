@@ -1,5 +1,5 @@
 import { renderResume } from './render.js';
-import { normalizePlan, shrinkSummary } from './tailor.js';
+import { defaultProjects, normalizePlan, shrinkSummary } from './tailor.js';
 
 // The browser preview is a few points tighter than Word's Calibri layout.
 // Keep enough room that a plan which looks full in Chrome cannot spill onto a
@@ -11,7 +11,7 @@ export function basePlan(master) {
     source: 'base',
     summary: master.summary,
     experience: (master.experience || []).map((r) => ({ id: r.id, bullets: r.bullets || [] })),
-    projects: (master.projects || []).map((p) => ({ id: p.id, bullets: p.bullets || [] })),
+    projects: defaultProjects(master).map((p) => ({ id: p.id, bullets: p.bullets || [] })),
     skills: master.skills || [],
     certifications: master.certifications || [],
   }, master);

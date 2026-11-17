@@ -2,7 +2,7 @@ import { TAXONOMY } from './taxonomy.js';
 import { countTerm, resumeToText } from './ats.js';
 import { emphasizePlan } from './emphasis.js';
 import { normalizeText, unique } from './util.js';
-import { alignEvidenceRoles, buildLocalSummary, ensureExperimentationSkill, normalizePlan, shrinkSummary } from './tailor.js';
+import { alignEvidenceRoles, buildLocalSummary, defaultProjects, ensureExperimentationSkill, normalizePlan, shrinkSummary } from './tailor.js';
 
 export const DEFAULT_AI_SETTINGS = {
   apiKey: '',
@@ -306,7 +306,7 @@ function validatePlan(raw, master, report, opts = {}) {
     .filter(Boolean)
     .slice(0, 4);
   if (!projectsPlan.length) {
-    projectsPlan = projects.map((p) => ({ id: p.id, bullets: (p.bullets || []).slice(0, 2) }));
+    projectsPlan = defaultProjects(master).map((p) => ({ id: p.id, bullets: (p.bullets || []).slice(0, 2) }));
   }
 
   let skills = Array.isArray(raw.skills) ? raw.skills : [];
@@ -362,6 +362,11 @@ function buildPrompt(master, jd, report, settings = {}) {
       matched_in_resume: matched,
       missing_from_resume: missing,
     },
+    project_library: {
+      count: (master.projects || []).length,
+      default_ids: defaultProjects(master).map((project) => project.id),
+      instruction: 'Choose exactly four project ids from master_resume.projects, ordered most relevant first. Use the default ids only as a fallback.',
+    },
     master_resume: stripContact(master),
     allow_latest_role_rewrite: allowRewrite,
     layout_budget: {
@@ -385,8 +390,9 @@ HARD RULES:
 - ${rewriteRule}
 - Preserve existing **bold** markers around tools, metrics, and outcomes. You may add bold to 1-3 JD-relevant skills per bullet, but never bold a whole sentence.
 - Keep the most recent role fully represented and ordered so the most relevant evidence appears first.
+- The project library may contain more than four projects. Select exactly four projects from it, ordered most relevant first. Use only project ids that exist in master_resume.projects; never invent a project.
 - For older roles, keep the strongest 3-5 bullets, ordered by relevance to the job.
-- Keep 3-4 projects and 2-3 bullets per project, ordered by relevance.
+- Keep 2-3 bullets per selected project, ordered by relevance.
 - Keep 6-8 skill groups. Put JD-relevant existing skills first. Remove tools that are clearly unrelated, but never add a tool that is not already in the master resume.
 - The summary must be 2-4 sentences (<= 520 characters), mirror the target title honestly, and mention only facts and tools that exist in the master resume. Lead with the most recent role's JD-relevant, real work.
 - Prioritize the job's required/must-have terms over preferred terms.

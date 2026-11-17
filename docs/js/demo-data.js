@@ -1,5 +1,7 @@
 // Starter resume content. Contact details are intentionally blank and stay local.
 // Replace or edit content through Settings → Import resume.
+import { PROJECT_LIBRARY } from './project-library.js';
+
 export const STARTER_MASTER = {
   "schemaVersion": 1,
   "profile": {
@@ -75,48 +77,7 @@ export const STARTER_MASTER = {
       ]
     }
   ],
-  "projects": [
-    {
-      "id": "job-tracker",
-      "name": "Job Tracker",
-      "tech": "FastAPI, PostgreSQL, Streamlit, APScheduler, GitHub Actions, Nginx",
-      "bullets": [
-        "Built a full stack job tracking platform that **auto scrapes 140+ company** career portals hourly using Python, persisting **10,000+ postings** in PostgreSQL with automatic cleanup of records older than 7 days.",
-        "Engineered FastAPI backend with rate limiting, pagination, and **RESTful** APIs, implemented **CI/CD** pipelines via GitHub Actions and deployed on Oracle Cloud Infrastructure with **Nginx** reverse proxy for production access.",
-        "Developed interactive **Streamlit** dashboard with real time filtering (role, company, location), dark mode toggle, mobile responsive layout, and a system monitoring interface tracking CPU, memory, and disk usage."
-      ]
-    },
-    {
-      "id": "auto-scrapper",
-      "name": "Auto Scrapper",
-      "tech": "LangChain, Playwright, BeautifulSoup, Docker",
-      "bullets": [
-        "Developed an **LLM powered** intelligent web scraping tool that **auto generates** and iteratively refines scraping code from natural language descriptions, supporting GPT, Claude, and Gemini as interchangeable backends via LangChain.",
-        "Integrated Gemini Flash for automated website structure analysis, implemented **sandboxed** code execution with real time token usage tracking and interactive status updates on a FastAPI + Bootstrap frontend.",
-        "Containerized the full application with **Docker** for consistent cross environment deployment, designed a modular multi provider architecture with automatic error recovery and **code refinement loops**."
-      ]
-    },
-    {
-      "id": "rag-llm-loan-document-processing",
-      "name": "RAG LLM (Loan Document Processing)",
-      "tech": "AWS Bedrock, ChromaDB, LangChain",
-      "bullets": [
-        "Architected a **Retrieval Augmented Generation** system for intelligent loan document Q&A using **AWS Bedrock** Titan embeddings for semantic vector search over PDF and CSV documents stored in ChromaDB.",
-        "Implemented **multi LLM** with automatic **fallback chains**, exponential backoff retries, and full source reference tracking for auditability of **AI generated responses**.",
-        "Engineered a scalable document ingestion pipeline with embedding caching, batch processing optimization, and **progress tracking**, reducing repeated computation overhead and accelerating large file processing."
-      ]
-    },
-    {
-      "id": "gnn-graph-neural-network-anomaly-detection",
-      "name": "GNN (Graph Neural Network Anomaly Detection)",
-      "tech": "Python, PyTorch, GNN",
-      "bullets": [
-        "Developed a **Graph Neural Network** based anomaly detection system for multivariate time series, leveraging graph structured representations to model complex inter sensor dependencies for **industrial IoT** datasets.",
-        "Designed graph construction from sensor correlation matrices and trained GNN models to identify anomalous **temporal patterns**, outperforming traditional statistical baselines in detection accuracy.",
-        "**Open sourced** the implementation achieving 3 GitHub stars and 1 fork, demonstrating practical applicability of **graph deep learning** for predictive maintenance in manufacturing environments."
-      ]
-    }
-  ],
+  "projects": PROJECT_LIBRARY,
   "skills": [
     {
       "label": "Languages",

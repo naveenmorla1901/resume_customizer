@@ -5,6 +5,19 @@ import { normalizeText, unique } from './util.js';
 
 const TERM_BY_NAME = new Map(TAXONOMY.map((t) => [t.name.toLowerCase(), t]));
 
+// The resume format has room for four projects. The master can hold a larger
+// GitHub project library; each tailored version selects the four most relevant
+// entries and keeps them in relevance order.
+export const MAX_PROJECTS = 4;
+
+export function defaultProjects(master = {}) {
+  const projects = Array.isArray(master.projects) ? master.projects : [];
+  const featured = projects.filter((project) => project.featured === true);
+  if (featured.length) return featured.slice(0, MAX_PROJECTS);
+  const candidates = projects.filter((project) => project.featured !== false);
+  return (candidates.length ? candidates : projects).slice(0, MAX_PROJECTS);
+}
+
 const GROUP_FOR_CATEGORY = {
   'Languages': 'Languages',
   'ML & AI': 'AI & ML',
@@ -269,7 +282,7 @@ function pickProjects(master, analysis) {
     return textScore(text, keywords)
       + textScore(project.tech || '', keywords) * 0.5
       + uniqueCoverage(text, keywords, baseText) * 1.25;
-  }).map(({ item: project }) => {
+  }).slice(0, MAX_PROJECTS).map(({ item: project }) => {
     const bulletRank = ranked(project.bullets || [], (bullet) => (
       textScore(bullet, keywords) + uniqueCoverage(bullet, keywords, baseText)
     )).map(({ item }) => item);
@@ -476,6 +489,12 @@ export function buildLocalPlan(master, jd, report = null) {
   const notes = [
     'Local tailoring keeps all wording factual. It selects, reorders, and trims existing content.',
   ];
+  const selectedNames = projects
+    .map((selected) => (master.projects || []).find((project) => project.id === selected.id)?.name)
+    .filter(Boolean);
+  if (selectedNames.length) {
+    notes.push(`Selected ${selectedNames.join(', ')} from the project library and ordered them by relevance.`);
+  }
   if (aligned.changes.length) {
     notes.push(
       `Aligned roles with ${unique(aligned.changes.flatMap((change) => change.labels)).join(', ')} wording where the same facts already existed. No new tools or metrics were added.`,
@@ -507,7 +526,12 @@ export function normalizePlan(plan = {}, master = {}) {
   });
 
   let projectsPlan = Array.isArray(plan.projects) ? plan.projects : [];
-  if (!projectsPlan.length) projectsPlan = projects.map((p) => ({ id: p.id, bullets: p.bullets || [] }));
+  if (!projectsPlan.length) {
+    projectsPlan = defaultProjects(master).map((project) => ({
+      id: project.id,
+      bullets: project.bullets || [],
+    }));
+  }
   projectsPlan = projectsPlan
     .map((incoming) => {
       const project = projects.find((p) => p.id === incoming.id);
@@ -515,7 +539,16 @@ export function normalizePlan(plan = {}, master = {}) {
       const bullets = Array.isArray(incoming.bullets) ? incoming.bullets.filter((b) => typeof b === 'string' && b.trim()) : project.bullets || [];
       return { id: project.id, bullets: bullets.length ? bullets : project.bullets || [] };
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, MAX_PROJECTS);
+  // If a saved or AI plan referenced only stale project ids, fall back to the
+  // featured projects instead of silently rendering an empty section.
+  if (!projectsPlan.length) {
+    projectsPlan = defaultProjects(master).map((project) => ({
+      id: project.id,
+      bullets: project.bullets || [],
+    }));
+  }
 
   let skills = Array.isArray(plan.skills) ? plan.skills : [];
   if (!skills.length) skills = master.skills || [];
@@ -584,7 +617,8 @@ export function resumePlainText(master, plan) {
   }
   lines.push('', 'PROJECTS');
   for (const project of data.projects) {
-    lines.push(`${project.name} | ${project.tech}`);
+    const link = String(project.link || project.url || '').trim();
+    lines.push(`${project.name} | ${project.tech}${link ? ` | ${link}` : ''}`);
     for (const bullet of project.bullets || []) lines.push(`• ${String(bullet).replace(/\*\*/g, '')}`);
   }
   lines.push('', 'TECHNICAL SKILLS');

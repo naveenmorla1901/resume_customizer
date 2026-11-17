@@ -30,8 +30,21 @@ function jobTitleHtml(role) {
   return `<div class="job-title"><span class="job-left">${escapeHtml(left)}</span><span class="job-dates">${escapeHtml(role.dates || '')}</span></div>`;
 }
 
+function projectLink(project = {}) {
+  return String(project.link || project.url || '').trim();
+}
+
 function projectTitleHtml(project) {
-  return `<div class="project-title"><span class="project-name">${escapeHtml(project.name || '')}</span>${project.tech ? `<span class="project-tech"> | ${escapeHtml(project.tech)}</span>` : ''}</div>`;
+  const link = projectLink(project);
+  const label = project.linkLabel || (/github\.com/i.test(link) ? 'GitHub' : 'Live');
+  const name = link
+    ? `<a class="project-name" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(project.name || '')}</a>`
+    : `<span class="project-name">${escapeHtml(project.name || '')}</span>`;
+  const tech = project.tech ? `<span class="project-tech"> | ${escapeHtml(project.tech)}</span>` : '';
+  const source = link
+    ? `<span class="project-tech"> | <a class="project-link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a></span>`
+    : '';
+  return `<div class="project-title">${name}${tech}${source}</div>`;
 }
 
 function layoutStyle(layout, pageNumber) {
