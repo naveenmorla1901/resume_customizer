@@ -1,4 +1,7 @@
 import puppeteer from '@cloudflare/puppeteer';
+import { McpServer } from '@modelcontextprotocol/server';
+import { createMcpHandler } from 'agents/mcp/server';
+import { z } from 'zod';
 
 const DEEPSEEK_ENDPOINT = 'https://api.deepseek.com/chat/completions';
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -13,6 +16,9 @@ const ALLOWED_MODELS = new Set(['deepseek-flash', 'deepseek-v4-pro']);
 const PDF_ROUTE = '/tailor.pdf';
 const MASTER_ROUTE = '/master';
 const HEALTH_ROUTE = '/health';
+const MCP_ROUTE = '/mcp';
+const FILE_ROUTE_PREFIX = '/files/';
+const FILE_TTL_SECONDS = 60 * 60;
 const APP_URL = 'https://naveenmorla1901.github.io/resume_customizer/';
 const PROXY_URL = 'https://resume-deepseek-proxy.morla-naveen1901.workers.dev';
 const MAX_PDF_BODY_BYTES = 128 * 1024;
@@ -125,13 +131,52 @@ function isMaster(value) {
   );
 }
 
-function pdfFilename(company) {
+function sanitizeFilename(value, fallback) {
+  const requested = String(value || '').trim();
+  const base = requested
+    .replace(/\.pdf$/i, '')
+    .replace(/[^a-z0-9._ -]+/gi, '_')
+    .replace(/\.{2,}/g, '.')
+    .replace(/[\s_]+/g, '_')
+    .replace(/^[._-]+|[._-]+$/g, '')
+    .slice(0, 120);
+  return `${base || fallback}.pdf`;
+}
+
+function pdfFilename(company, requested) {
   const safe = String(company || '')
     .replace(/[^a-z0-9]+/gi, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 40);
   const date = new Date().toISOString().slice(0, 10);
-  return `Naveen_Morla_Resume${safe ? `_${safe}` : ''}_${date}.pdf`;
+  const fallback = `Naveen_Morla_Resume${safe ? `_${safe}` : ''}_${date}`;
+  return sanitizeFilename(requested, fallback);
+}
+
+async function loadStoredMaster(env) {
+  if (!env.RESUME_MASTER) return null;
+  try {
+    const stored = await env.RESUME_MASTER.get('master', 'json');
+    return isMaster(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function randomFileId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function storePdf(env, pdf, filename) {
+  if (!env.RESUME_MASTER) return null;
+  const id = randomFileId();
+  const bytes = pdf instanceof Uint8Array ? pdf : new Uint8Array(pdf);
+  await env.RESUME_MASTER.put(`pdf:${id}`, bytes, {
+    expirationTtl: FILE_TTL_SECONDS,
+    metadata: { filename },
+  });
+  return id;
 }
 
 async function generatePdf(env, { master, jd, ai }) {
@@ -247,10 +292,145 @@ async function handleHealth(env) {
     kvConfigured: Boolean(env.RESUME_MASTER),
     browserConfigured: Boolean(env.BROWSER),
     masterStored,
+    mcp: true,
   });
 }
 
-async function handleTailorPdf(request, env) {  const auth = authorized(request, env);
+function createResumeMcpServer(env, baseUrl) {
+  const server = new McpServer({ name: 'resume-studio', version: '1.0.0' });
+
+  server.registerTool('tailor_resume', {
+    title: 'Tailor resume to a job description',
+    description: [
+      'Create a tailored two-page PDF resume from a job description and return a temporary download link.',
+      'Use this whenever the user provides a job description or asks for a resume tailored to a role.',
+      'The resume is built from Naveen Morla\'s stored master resume and keeps the existing two-page layout, fonts, and clickable project links.',
+      'Pass filename when the user asks for a specific output filename; the .pdf extension is added automatically.',
+      'Set ai=true only when the user explicitly wants DeepSeek rewording; otherwise leave it false for fast, deterministic tailoring.',
+    ].join(' '),
+    inputSchema: z.object({
+      jobDescription: z.string().min(MIN_JD_CHARS).max(MAX_JD_CHARS).describe('The complete job description text, not just the job title.'),
+      company: z.string().max(80).optional().describe('Company name used in the default filename and confirmation message.'),
+      ai: z.boolean().optional().describe('true = DeepSeek rewrites the summary and latest role; false or omitted = deterministic local tailoring (default).'),
+      filename: z.string().max(140).optional().describe('Exact output filename requested by the user, for example "Naveen_Morla_Acme_Data_Engineer.pdf".'),
+    }),
+  }, async ({ jobDescription, company, ai, filename }) => {
+    try {
+      const master = await loadStoredMaster(env);
+      if (!master) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: 'No master resume is stored. Upload it with PUT /master first.' }],
+        };
+      }
+      if (ai === true && !env.DEEPSEEK_API_KEY) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: 'AI mode is not configured: DEEPSEEK_API_KEY is missing. Retry with ai=false.' }],
+        };
+      }
+
+      const pdf = await generatePdf(env, { master, jd: jobDescription, ai: ai === true });
+      const name = pdfFilename(company, filename);
+      const id = await storePdf(env, pdf, name);
+      const url = id ? `${baseUrl}${FILE_ROUTE_PREFIX}${id}` : null;
+      const mode = ai === true ? 'DeepSeek AI rewrite' : 'deterministic local tailoring';
+      const lines = [
+        `Resume PDF generated with ${mode}.`,
+        `Filename: ${name}`,
+        url
+          ? `Download (link expires in 60 minutes): ${url}`
+          : 'Temporary file storage is unavailable. Use POST /tailor.pdf to download the PDF directly.',
+        'The PDF keeps the two-page layout, clickable project links, and the "Private project" label for MS-FTAE.',
+      ];
+      const content = [{ type: 'text', text: lines.join('\n') }];
+      if (url) {
+        content.push({
+          type: 'resource_link',
+          uri: url,
+          name,
+          mimeType: 'application/pdf',
+          description: 'Tailored resume PDF. Download before the link expires.',
+        });
+      }
+      return { content };
+    } catch (error) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `PDF generation failed: ${error?.message || 'unknown error'}` }],
+      };
+    }
+  });
+
+  server.registerTool('resume_service_status', {
+    title: 'Check resume service status',
+    description: 'Report whether the resume service has a stored master, PDF token, KV storage, Browser Rendering, and DeepSeek. Use only when a resume request fails or the user asks whether the service is ready.',
+  }, async () => {
+    const status = {
+      tokenConfigured: Boolean(env.PDF_API_TOKEN),
+      kvConfigured: Boolean(env.RESUME_MASTER),
+      browserConfigured: Boolean(env.BROWSER),
+      deepSeekConfigured: Boolean(env.DEEPSEEK_API_KEY),
+      masterStored: Boolean(await loadStoredMaster(env)),
+    };
+    return { content: [{ type: 'text', text: JSON.stringify(status, null, 2) }] };
+  });
+
+  return server;
+}
+
+async function handleMcp(request, env, ctx) {
+  const auth = authorized(request, env);
+  if (!auth.ok) {
+    return new Response(JSON.stringify({ error: { message: auth.message } }), {
+      status: auth.status,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'WWW-Authenticate': 'Bearer realm="resume-studio"',
+        'Cache-Control': 'no-store',
+      },
+    });
+  }
+
+  const baseUrl = new URL(request.url).origin;
+  const handler = createMcpHandler(() => createResumeMcpServer(env, baseUrl), {
+    route: MCP_ROUTE,
+    corsOptions: false,
+  });
+  const executionCtx = ctx || { waitUntil() {}, passThroughOnException() {} };
+  return handler(request, env, executionCtx);
+}
+
+async function handleFile(request, env, id) {
+  if (request.method !== 'GET') return apiError('Method not allowed. Use GET.', 405);
+  if (!/^[a-f0-9]{32}$/.test(id)) return apiError('File not found.', 404);
+  if (!env.RESUME_MASTER) return apiError('File storage is not configured.', 500);
+
+  let stored = null;
+  try {
+    stored = await env.RESUME_MASTER.getWithMetadata(`pdf:${id}`, 'arrayBuffer');
+  } catch {
+    stored = null;
+  }
+  const bytes = stored?.value;
+  if (!bytes) return apiError('File not found or expired.', 404);
+
+  const filename = sanitizeFilename(stored.metadata?.filename, 'Naveen_Morla_Resume');
+  return new Response(bytes, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': String(bytes.byteLength),
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
+    },
+  });
+}
+
+async function handleTailorPdf(request, env) {
+  const auth = authorized(request, env);
   if (!auth.ok) return apiError(auth.message, auth.status);
   if (request.method !== 'POST') return apiError('Method not allowed. Use POST.', 405);
 
@@ -269,16 +449,7 @@ async function handleTailorPdf(request, env) {  const auth = authorized(request,
       return apiError('master must be a resume master with a profile and at least one experience role.', 400);
     }
   } else {
-    if (!env.RESUME_MASTER) {
-      return apiError('RESUME_MASTER KV binding is not configured. Send master in the request or upload it with PUT /master.', 500);
-    }
-    let stored = null;
-    try {
-      stored = await env.RESUME_MASTER.get('master', 'json');
-    } catch {
-      stored = null;
-    }
-    master = stored;
+    master = await loadStoredMaster(env);
     if (!isMaster(master)) {
       return apiError('No master resume is stored. Upload it with PUT /master or send master in the request.', 409);
     }
@@ -290,6 +461,7 @@ async function handleTailorPdf(request, env) {  const auth = authorized(request,
   }
 
   const company = String(body.company || '').trim().slice(0, 80);
+  const filename = pdfFilename(company, body.filename);
 
   try {
     const pdf = await generatePdf(env, { master, jd, ai });
@@ -297,7 +469,7 @@ async function handleTailorPdf(request, env) {  const auth = authorized(request,
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${pdfFilename(company)}"`,
+        'Content-Disposition': `attachment; filename="${filename}"`,
         'Cache-Control': 'no-store',
       },
     });
@@ -307,11 +479,15 @@ async function handleTailorPdf(request, env) {  const auth = authorized(request,
 }
 
 export default {
-  async fetch(request, env = {}) {
+  async fetch(request, env = {}, ctx) {
     const url = new URL(request.url);
     if (url.pathname === PDF_ROUTE) return handleTailorPdf(request, env);
     if (url.pathname === MASTER_ROUTE) return handleMaster(request, env);
     if (url.pathname === HEALTH_ROUTE) return handleHealth(env);
+    if (url.pathname === MCP_ROUTE) return handleMcp(request, env, ctx);
+    if (url.pathname.startsWith(FILE_ROUTE_PREFIX)) {
+      return handleFile(request, env, url.pathname.slice(FILE_ROUTE_PREFIX.length));
+    }
 
     const origin = request.headers.get('Origin') || '';
     const allowed = allowedOrigins(env);

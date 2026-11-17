@@ -214,6 +214,7 @@ $body = @{
   jobDescription = (Get-Content 'jd.txt' -Raw)
   company = 'Acme'
   ai = $false
+  filename = 'Naveen_Morla_Acme_Data_Engineer.pdf'
 } | ConvertTo-Json
 
 Invoke-WebRequest -Method Post `
@@ -221,12 +222,53 @@ Invoke-WebRequest -Method Post `
   -Headers @{ Authorization = "Bearer $token" } `
   -ContentType 'application/json' `
   -Body $body `
-  -OutFile 'Naveen_Morla_Resume_Acme.pdf'
+  -OutFile 'Naveen_Morla_Acme_Data_Engineer.pdf'
 ```
 
-`ai: false` uses deterministic local tailoring. `ai: true` uses the existing secure DeepSeek proxy. The PDF comes from the same live preview, so it keeps the two-page layout, clickable project links, and the “Private project” label.
+`ai: false` uses deterministic local tailoring. `ai: true` uses the existing secure DeepSeek proxy. `filename` is optional; if omitted, the Worker uses `Naveen_Morla_Resume_<Company>_<date>.pdf`. The PDF comes from the same live preview, so it keeps the two-page layout, clickable project links, and the “Private project” label.
 
 The endpoint uses Cloudflare Browser Rendering. The Workers Free plan includes 10 browser-minutes per day; Workers Paid removes that cap. The master resume stays in Cloudflare KV and is never committed to the repository.
+
+### 4. Use from Claude with MCP (recommended for chat)
+
+The Worker also exposes a remote MCP server at `/mcp`. This is the efficient way to use Claude: one tool call sends the job description, and the tool returns a short-lived download link with the filename you asked for. Claude never has to browse the app, read its HTML/JS, or interact with the UI.
+
+Claude's custom connectors support fixed request headers, so no OAuth setup is needed:
+
+1. In Claude, open **Customize → Connectors → Add custom connector**.
+2. Name it `Resume Studio`.
+3. URL: `https://resume-deepseek-proxy.morla-naveen1901.workers.dev/mcp`
+4. Under **Request headers**, add `Authorization` with the value `Bearer <PDF_API_TOKEN>`.
+5. Save, then enable the connector in the conversation.
+
+The server exposes two tools:
+
+- `tailor_resume` — accepts `jobDescription`, optional `company`, optional `ai`, and optional `filename`; returns a download link that expires after 60 minutes.
+- `resume_service_status` — reports whether the stored master, KV, Browser Rendering, and DeepSeek are configured.
+
+Example prompts:
+
+```text
+Tailor my resume to this job description and save it as
+Naveen_Morla_Stripe_Data_Engineer.pdf: <paste the JD>
+```
+
+```text
+Use tailor_resume with ai=true for this role. Name the file
+Naveen_Morla_OpenAI_ML_Engineer.pdf.
+```
+
+Claude Code and other terminal agents can skip MCP and call the REST endpoint with `curl`; that is the lowest-token option when a shell is available:
+
+```bash
+curl -X POST https://resume-deepseek-proxy.morla-naveen1901.workers.dev/tailor.pdf \
+  -H "Authorization: Bearer $PDF_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jobDescription":"...","company":"Acme","ai":false,"filename":"Naveen_Morla_Acme.pdf"}' \
+  -o Naveen_Morla_Acme.pdf
+```
+
+Do not ask Claude to open the website and operate it. That path requires many browser steps, consumes far more tokens, and cannot reliably return a downloadable file.
 
 ## Two-page behavior
 
