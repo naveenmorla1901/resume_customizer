@@ -190,6 +190,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 Add the output as a GitHub Actions secret, then re-run **Deploy DeepSeek secure proxy**. Check `GET /health` on the Worker; it reports whether the token, KV binding, Browser Rendering, and stored master are configured.
 
+To add the secret: open the repository on GitHub → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**, name it `PDF_API_TOKEN`, and paste the generated value. Then open **Actions** → **Deploy DeepSeek secure proxy** → **Run workflow**.
+
 ### 2. Store the private master (one time)
 
 The deploy workflow creates or reuses the `resume-master` KV namespace. Upload the private master once:
@@ -288,8 +290,10 @@ docs/
     ├── util.js
     └── vendor/             # docx, JSZip, licenses
 worker/
-├── deepseek-proxy.mjs      # Cloudflare Worker: injects the DeepSeek key
-└── wrangler.toml           # Worker name, entry, allowed origins
+├── deepseek-proxy.mjs      # Cloudflare Worker: DeepSeek proxy + PDF API
+├── package.json            # Browser Rendering dependency
+├── package-lock.json
+└── wrangler.toml           # Worker name, entry, browser binding, origins
 .github/workflows/
 ├── pages.yml               # Deploys docs/ to GitHub Pages
 └── deploy-proxy.yml        # Deploys the Worker and its DeepSeek secret
