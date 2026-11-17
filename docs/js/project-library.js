@@ -166,17 +166,6 @@ export const PROJECT_LIBRARY = [
     ],
   },
   {
-    id: 'data-science-samples',
-    name: 'Data Science Samples',
-    tech: 'Python, scikit-learn, pandas, Jupyter, pyresparser',
-    link: 'https://github.com/naveenmorla1901/DataScience_Sample_Projects',
-    featured: false,
-    bullets: [
-      'Built classical ML notebooks covering decision trees, KNN regression, and logistic regression with preprocessing, model training, and evaluation on public datasets.',
-      'Implemented batch resume parsing with pyresparser to extract structured candidate details from PDF, DOCX, and TXT files.',
-    ],
-  },
-  {
     id: 'stat-5020-body-fat-regression',
     name: 'Body Fat Regression (R)',
     tech: 'R, R Markdown, multiple linear regression, ANOVA, VIF, regression diagnostics',
