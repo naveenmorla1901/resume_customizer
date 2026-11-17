@@ -337,6 +337,7 @@ textarea::placeholder, input::placeholder { color: #98a2b3; }
 .project-title { font-size: 10pt; line-height: calc(11.8pt + var(--fill-line, 0pt)); margin: calc(4.4pt + var(--fill-gap, 0pt)) 0 calc(.6pt + var(--fill-small, 0pt)); }
 .project-name { font-weight: 700; color: var(--navy); text-decoration: underline; text-underline-offset: .6pt; }
 .project-tech { font-style: italic; font-size: 9pt; }
+.project-private { font-style: italic; font-size: 9pt; color: #555; }
 .project-link { color: var(--navy); font-weight: 650; text-decoration: underline; text-underline-offset: .5pt; }
 .resume-skills { margin: 0; }
 .skill-group { margin: calc(1.1pt + var(--fill-small, 0pt)) 0; text-align: justify; }

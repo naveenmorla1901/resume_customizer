@@ -2,14 +2,29 @@
  * Project library for resume tailoring.
  *
  * Every entry maps to a real repository, live site, or documented project.
- * `featured: true` projects are shown in the untailored two-page preview;
- * tailoring can select any four projects from the full library and orders
+ * `featured: true` projects are shown in the untailored two-page preview (up to
+ * four). Tailoring can select any four projects from the full library and orders
  * them by relevance to the job description.
+ *
+ * Private projects use `private: true` and omit `link`; the resume labels them
+ * "Private project" instead of showing a dead GitHub URL.
  *
  * Keep bullets factual. The app is allowed to reorder and emphasize existing
  * evidence, but it must never invent a project, tool, metric, or outcome.
  */
 export const PROJECT_LIBRARY = [
+  {
+    id: 'ms-ftae',
+    name: 'MS-FTAE (Trading Research Engine)',
+    tech: 'Python, SQLite, Streamlit, Docker, DeepSeek, Coinbase, Yahoo Finance',
+    private: true,
+    featured: true,
+    bullets: [
+      'Built **MS-FTAE**, a multi-strategy forward-testing and alpha-attribution engine that runs **56 strategies** across crypto and US equities on 5m/15m/1h/4h/1d bars, isolating ~1,430 strategy-asset-timeframe cohorts with a $100 virtual sandbox each.',
+      'Engineered the **data pipeline** to ingest closed bars incrementally into SQLite, label every bar with trend/volatility/volume/session regimes, and enforce causal, look-ahead-safe signals with next-bar-open fills, slippage, fees, and stops.',
+      'Built the **analytics and AI layer**: leaderboards, heatmaps, Wilson confidence intervals, Sharpe, excess-vs-buy-and-hold, and Deflated Sharpe, plus a DeepSeek JSON analyst and a Dockerized Streamlit dashboard for daily paper-trading decisions.',
+    ],
+  },
   {
     id: 'inbox-job-agent',
     name: 'Inbox Job Agent',
@@ -87,7 +102,7 @@ export const PROJECT_LIBRARY = [
     name: 'GNN (Graph Neural Network Anomaly Detection)',
     tech: 'Python, PyTorch, PyTorch Geometric, GNN',
     link: 'https://github.com/naveenmorla1901/GNN',
-    featured: true,
+    featured: false,
     bullets: [
       'Developed a **Graph Neural Network** based anomaly detection system for multivariate time series, leveraging graph structured representations to model complex inter sensor dependencies for **industrial IoT** datasets.',
       'Designed graph construction from sensor correlation matrices and trained GNN models to identify anomalous **temporal patterns**, outperforming traditional statistical baselines in detection accuracy.',

@@ -618,7 +618,8 @@ export function resumePlainText(master, plan) {
   lines.push('', 'PROJECTS');
   for (const project of data.projects) {
     const link = String(project.link || project.url || '').trim();
-    lines.push(`${project.name} | ${project.tech}${link ? ` | ${link}` : ''}`);
+    const source = link ? ` | ${link}` : project.private ? ' | Private project' : '';
+    lines.push(`${project.name} | ${project.tech}${source}`);
     for (const bullet of project.bullets || []) lines.push(`• ${String(bullet).replace(/\*\*/g, '')}`);
   }
   lines.push('', 'TECHNICAL SKILLS');

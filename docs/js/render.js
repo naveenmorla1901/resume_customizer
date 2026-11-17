@@ -43,7 +43,9 @@ function projectTitleHtml(project) {
   const tech = project.tech ? `<span class="project-tech"> | ${escapeHtml(project.tech)}</span>` : '';
   const source = link
     ? `<span class="project-tech"> | <a class="project-link" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a></span>`
-    : '';
+    : project.private
+      ? '<span class="project-private"> | Private project</span>'
+      : '';
   return `<div class="project-title">${name}${tech}${source}</div>`;
 }
 

@@ -288,6 +288,14 @@ export function buildResumeDocx(docx, master, tailored, opts = {}) {
           })],
         }),
       );
+    } else if (masterProject.private) {
+      titleRuns.push(new TextRun({
+        text: ' | Private project',
+        italics: true,
+        size: 18,
+        font: FONT,
+        color: GRAY,
+      }));
     }
     children.push(new Paragraph({
       keepNext: true,
