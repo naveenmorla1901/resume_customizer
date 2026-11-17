@@ -33,24 +33,35 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          PDF_API_TOKEN: ${{ secrets.PDF_API_TOKEN }}
         run: |
           # Copy/paste from dashboards often adds a trailing space or newline.
           # Trim every secret before using it as an API credential.
           CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
           CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
           DEEPSEEK_API_KEY="$(printf '%s' "$DEEPSEEK_API_KEY" | tr -d '[:space:]')"
+          PDF_API_TOKEN="$(printf '%s' "$PDF_API_TOKEN" | tr -d '[:space:]')"
           if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ] && [ -n "$DEEPSEEK_API_KEY" ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::Add CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, and DEEPSEEK_API_KEY as repository secrets first."
+              exit 1
+            fi
+            echo "::notice::Proxy deploy skipped because the Cloudflare and DeepSeek repository secrets are not set yet. Add them, then run this workflow manually."
           fi
-          echo "configured=false" >> "$GITHUB_OUTPUT"
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "::error::Add CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, and DEEPSEEK_API_KEY as repository secrets first."
-            exit 1
+          if [ -z "$PDF_API_TOKEN" ]; then
+            echo "::notice::PDF_API_TOKEN is not set. The /tailor.pdf endpoint will return 500 until you add that repository secret."
           fi
-          echo "::notice::Proxy deploy skipped because the Cloudflare and DeepSeek repository secrets are not set yet. Add them, then run this workflow manually."
 
-      - name: Deploy Worker
+      - name: Install Worker dependencies
+        if: steps.config.outputs.configured == 'true'
+        working-directory: worker
+        run: npm ci
+
+      - name: Configure KV namespace
+        id: kv
         if: steps.config.outputs.configured == 'true'
         working-directory: worker
         env:
@@ -59,8 +70,36 @@ jobs:
         run: |
           CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
           CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
+          API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces"
+          LIST="$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$API" || true)"
+          KV_ID="$(printf '%s' "$LIST" | jq -r '.result[]? | select(.title == "resume-master") | .id' | head -n1)"
+          if [ -z "$KV_ID" ] || [ "$KV_ID" = "null" ]; then
+            CREATE="$(curl -sS -X POST "$API" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" --data '{"title":"resume-master"}' || true)"
+            KV_ID="$(printf '%s' "$CREATE" | jq -r '.result.id // empty')"
+          fi
+          if [ -z "$KV_ID" ]; then
+            echo "::warning::Could not create or find the resume-master KV namespace. The PDF endpoint will accept master in the request until the binding is configured."
+            echo "kv_id=" >> "$GITHUB_OUTPUT"
+            echo "config=wrangler.toml" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cp wrangler.toml wrangler.ci.toml
+          printf '\n[[kv_namespaces]]\nbinding = "RESUME_MASTER"\nid = "%s"\n' "$KV_ID" >> wrangler.ci.toml
+          echo "kv_id=$KV_ID" >> "$GITHUB_OUTPUT"
+          echo "config=wrangler.ci.toml" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Worker
+        if: steps.config.outputs.configured == 'true'
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_CONFIG: ${{ steps.kv.outputs.config || 'wrangler.toml' }}
+        run: |
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
+          CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
           export CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
-          npx --yes wrangler@4 deploy
+          npx --yes wrangler@4 deploy --config "$WRANGLER_CONFIG"
 
       - name: Store DeepSeek key as a Worker secret
         if: steps.config.outputs.configured == 'true'
@@ -69,9 +108,54 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          WRANGLER_CONFIG: ${{ steps.kv.outputs.config || 'wrangler.toml' }}
         run: |
           CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
           CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
           DEEPSEEK_API_KEY="$(printf '%s' "$DEEPSEEK_API_KEY" | tr -d '[:space:]')"
           export CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
-          printf '%s' "$DEEPSEEK_API_KEY" | npx --yes wrangler@4 secret put DEEPSEEK_API_KEY
+          printf '%s' "$DEEPSEEK_API_KEY" | npx --yes wrangler@4 secret put DEEPSEEK_API_KEY --config "$WRANGLER_CONFIG"
+
+      - name: Store PDF API token as a Worker secret
+        if: steps.config.outputs.configured == 'true'
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PDF_API_TOKEN: ${{ secrets.PDF_API_TOKEN }}
+          WRANGLER_CONFIG: ${{ steps.kv.outputs.config || 'wrangler.toml' }}
+        run: |
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
+          CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
+          PDF_API_TOKEN="$(printf '%s' "$PDF_API_TOKEN" | tr -d '[:space:]')"
+          if [ -z "$PDF_API_TOKEN" ]; then
+            echo "::notice::Skipping PDF_API_TOKEN; add it as a repository secret and re-run this workflow."
+            exit 0
+          fi
+          export CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+          printf '%s' "$PDF_API_TOKEN" | npx --yes wrangler@4 secret put PDF_API_TOKEN --config "$WRANGLER_CONFIG"
+
+      - name: Seed master resume into KV
+        if: steps.config.outputs.configured == 'true' && steps.kv.outputs.kv_id != ''
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          RESUME_MASTER_JSON: ${{ secrets.RESUME_MASTER_JSON }}
+          KV_ID: ${{ steps.kv.outputs.kv_id }}
+        run: |
+          CLOUDFLARE_API_TOKEN="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | tr -d '[:space:]')"
+          CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | tr -d '[:space:]')"
+          if [ -z "$RESUME_MASTER_JSON" ]; then
+            echo "::notice::RESUME_MASTER_JSON is not set. Upload the master once with PUT /master."
+            exit 0
+          fi
+          printf '%s' "$RESUME_MASTER_JSON" > /tmp/master.json
+          RESPONSE="$(curl -sS -X PUT "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces/$KV_ID/values/master" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/master.json)"
+          if ! printf '%s' "$RESPONSE" | jq -e '.success == true' > /dev/null; then
+            echo "::warning::Could not seed the master resume into KV. Upload it with PUT /master instead."
+            printf '%s\n' "$RESPONSE"
+          fi

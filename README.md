@@ -176,6 +176,56 @@ If the browser or network blocks the request (CORS, offline, expired key, or ins
 
 Without a key or proxy URL, everything except the DeepSeek selection step still works.
 
+## Cloud PDF API (optional)
+
+The same Worker can return the tailored two-page resume as a PDF when a cloud service posts a job description.
+
+### 1. Add the API token
+
+Create a long random token and add it as the `PDF_API_TOKEN` repository secret. The endpoint returns `401` without it and `500` until the secret is set.
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Add the output as a GitHub Actions secret, then re-run **Deploy DeepSeek secure proxy**.
+
+### 2. Store the private master (one time)
+
+The deploy workflow creates or reuses the `resume-master` KV namespace. Upload the private master once:
+
+```powershell
+$token = '<PDF_API_TOKEN>'
+Invoke-RestMethod -Method Put `
+  -Uri 'https://resume-deepseek-proxy.morla-naveen1901.workers.dev/master' `
+  -Headers @{ Authorization = "Bearer $token" } `
+  -ContentType 'application/json' `
+  -InFile 'master/naveen-morla.json'
+```
+
+Alternatively, add `RESUME_MASTER_JSON` as a repository secret and let the workflow seed KV, or send `master` in each request.
+
+### 3. Generate a PDF
+
+```powershell
+$body = @{
+  jobDescription = (Get-Content 'jd.txt' -Raw)
+  company = 'Acme'
+  ai = $false
+} | ConvertTo-Json
+
+Invoke-WebRequest -Method Post `
+  -Uri 'https://resume-deepseek-proxy.morla-naveen1901.workers.dev/tailor.pdf' `
+  -Headers @{ Authorization = "Bearer $token" } `
+  -ContentType 'application/json' `
+  -Body $body `
+  -OutFile 'Naveen_Morla_Resume_Acme.pdf'
+```
+
+`ai: false` uses deterministic local tailoring. `ai: true` uses the existing secure DeepSeek proxy. The PDF comes from the same live preview, so it keeps the two-page layout, clickable project links, and the “Private project” label.
+
+The endpoint uses Cloudflare Browser Rendering. The Workers Free plan includes 10 browser-minutes per day; Workers Paid removes that cap. The master resume stays in Cloudflare KV and is never committed to the repository.
+
 ## Two-page behavior
 
 The preview is the source of truth. The fitter reserves a safety margin to account for small browser-versus-Word layout differences. When page 1 overflows, it trims the summary, then reduces bullets from the oldest roles forward. When page 2 overflows, it trims project bullets, then whole projects, then skill items and groups, with certifications as a last resort.

@@ -1,3 +1,5 @@
+import puppeteer from '@cloudflare/puppeteer';
+
 const DEEPSEEK_ENDPOINT = 'https://api.deepseek.com/chat/completions';
 const DEFAULT_ALLOWED_ORIGINS = [
   'https://naveenmorla1901.github.io',
@@ -7,6 +9,17 @@ const DEFAULT_ALLOWED_ORIGINS = [
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_TOKENS = 4000;
 const ALLOWED_MODELS = new Set(['deepseek-flash', 'deepseek-v4-pro']);
+
+const PDF_ROUTE = '/tailor.pdf';
+const MASTER_ROUTE = '/master';
+const APP_URL = 'https://naveenmorla1901.github.io/resume_customizer/';
+const PROXY_URL = 'https://resume-deepseek-proxy.morla-naveen1901.workers.dev';
+const MAX_PDF_BODY_BYTES = 128 * 1024;
+const MAX_MASTER_BODY_BYTES = 128 * 1024;
+const MIN_JD_CHARS = 20;
+const MAX_JD_CHARS = 20_000;
+const PDF_TIMEOUT_MS = 60_000;
+const TAILOR_TIMEOUT_MS = 90_000;
 
 function allowedOrigins(env) {
   const configured = String(env?.ALLOWED_ORIGINS || '')
@@ -40,8 +53,247 @@ function errorResponse(message, status, origin) {
   return jsonResponse({ error: { message } }, status, origin);
 }
 
+function apiJson(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+function apiError(message, status = 400) {
+  return apiJson({ error: { message } }, status);
+}
+
+function authorized(request, env) {
+  const expected = String(env?.PDF_API_TOKEN || '');
+  if (!expected) {
+    return { ok: false, status: 500, message: 'PDF_API_TOKEN is not configured on the Worker.' };
+  }
+  const header = request.headers.get('Authorization') || '';
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  if (!match) {
+    return { ok: false, status: 401, message: 'Missing bearer token.' };
+  }
+  const provided = match[1].trim();
+  if (provided.length !== expected.length) {
+    return { ok: false, status: 401, message: 'Invalid bearer token.' };
+  }
+  let diff = 0;
+  for (let i = 0; i < expected.length; i += 1) {
+    diff |= expected.charCodeAt(i) ^ provided.charCodeAt(i);
+  }
+  if (diff !== 0) {
+    return { ok: false, status: 401, message: 'Invalid bearer token.' };
+  }
+  return { ok: true };
+}
+
+async function readJsonBody(request, maxBytes) {
+  const declared = Number(request.headers.get('Content-Length') || 0);
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    return { status: 413, error: 'Request body is too large.' };
+  }
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).byteLength > maxBytes) {
+    return { status: 413, error: 'Request body is too large.' };
+  }
+  let body;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return { status: 400, error: 'Invalid JSON body.' };
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { status: 400, error: 'JSON body must be an object.' };
+  }
+  return { body };
+}
+
+function isMaster(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && value.profile
+    && typeof value.profile === 'object'
+    && Array.isArray(value.experience)
+    && value.experience.length > 0,
+  );
+}
+
+function pdfFilename(company) {
+  const safe = String(company || '')
+    .replace(/[^a-z0-9]+/gi, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+  const date = new Date().toISOString().slice(0, 10);
+  return `Naveen_Morla_Resume${safe ? `_${safe}` : ''}_${date}.pdf`;
+}
+
+async function generatePdf(env, { master, jd, ai }) {
+  if (!env.BROWSER) throw new Error('BROWSER binding is not configured.');
+
+  const browser = await puppeteer.launch(env.BROWSER);
+  try {
+    const page = await browser.newPage();
+    await page.setCacheEnabled(false);
+    page.setDefaultTimeout(PDF_TIMEOUT_MS);
+
+    await page.goto(`${APP_URL}?api=${Date.now()}`, {
+      waitUntil: 'networkidle0',
+      timeout: PDF_TIMEOUT_MS,
+    });
+
+    const settings = ai
+      ? {
+          connectionMode: 'proxy',
+          proxyUrl: PROXY_URL,
+          model: 'deepseek-flash',
+          endpoint: DEEPSEEK_ENDPOINT,
+          useAI: true,
+          rewriteBullets: true,
+        }
+      : { useAI: false };
+
+    await page.evaluate(({ masterData, settingsData }) => {
+      localStorage.clear();
+      localStorage.setItem('resumeStudio.v1.master', JSON.stringify(masterData));
+      localStorage.setItem('resumeStudio.v1.onboarded', 'true');
+      localStorage.setItem('resumeStudio.v1.settings', JSON.stringify(settingsData));
+    }, { masterData: master, settingsData: settings });
+
+    await page.reload({ waitUntil: 'networkidle0', timeout: PDF_TIMEOUT_MS });
+
+    await page.evaluate(() => {
+      const modal = document.getElementById('welcome-modal');
+      if (modal) modal.hidden = true;
+      // printPdf() calls this after populating #print-root; suppress the
+      // browser print dialog so page.pdf() can capture the print layout.
+      window.print = () => {};
+    });
+
+    await page.evaluate(({ jobDescription, useAI }) => {
+      const input = document.getElementById('jd-input');
+      if (!input) throw new Error('Job description input was not found.');
+      input.value = jobDescription;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      const toggle = document.getElementById('ai-toggle');
+      if (toggle) toggle.checked = Boolean(useAI);
+    }, { jobDescription: jd, useAI: ai });
+
+    await page.click('#btn-tailor');
+    await page.waitForFunction(() => {
+      const loading = document.getElementById('loading-modal');
+      const ats = document.getElementById('ats-card');
+      const pages = document.querySelectorAll('#preview-mount .resume-page');
+      return Boolean(ats && !ats.hidden && (!loading || loading.hidden) && pages.length === 2);
+    }, { timeout: TAILOR_TIMEOUT_MS });
+
+    // Let the fit/fill pass settle before capturing the final layout.
+    await new Promise((resolve) => setTimeout(resolve, 750));
+
+    await page.click('#btn-print');
+    await page.waitForFunction(
+      () => document.querySelectorAll('#print-root .resume-page').length === 2,
+      { timeout: 30_000 },
+    );
+
+    return await page.pdf({
+      printBackground: true,
+      preferCSSPageSize: true,
+    });
+  } finally {
+    await browser.close();
+  }
+}
+
+async function handleMaster(request, env) {
+  const auth = authorized(request, env);
+  if (!auth.ok) return apiError(auth.message, auth.status);
+  if (request.method !== 'PUT') return apiError('Method not allowed. Use PUT.', 405);
+  if (!env.RESUME_MASTER) {
+    return apiError('RESUME_MASTER KV binding is not configured.', 500);
+  }
+
+  const parsed = await readJsonBody(request, MAX_MASTER_BODY_BYTES);
+  if (parsed.error) return apiError(parsed.error, parsed.status);
+  if (!isMaster(parsed.body)) {
+    return apiError('Body must be a resume master with a profile and at least one experience role.', 400);
+  }
+
+  await env.RESUME_MASTER.put('master', JSON.stringify(parsed.body));
+  return apiJson({
+    ok: true,
+    projects: Array.isArray(parsed.body.projects) ? parsed.body.projects.length : 0,
+  });
+}
+
+async function handleTailorPdf(request, env) {
+  const auth = authorized(request, env);
+  if (!auth.ok) return apiError(auth.message, auth.status);
+  if (request.method !== 'POST') return apiError('Method not allowed. Use POST.', 405);
+
+  const parsed = await readJsonBody(request, MAX_PDF_BODY_BYTES);
+  if (parsed.error) return apiError(parsed.error, parsed.status);
+
+  const body = parsed.body;
+  const jd = String(body.jobDescription || '').trim();
+  if (jd.length < MIN_JD_CHARS || jd.length > MAX_JD_CHARS) {
+    return apiError(`jobDescription must be between ${MIN_JD_CHARS} and ${MAX_JD_CHARS} characters.`, 400);
+  }
+
+  let master = body.master;
+  if (master !== undefined) {
+    if (!isMaster(master)) {
+      return apiError('master must be a resume master with a profile and at least one experience role.', 400);
+    }
+  } else {
+    if (!env.RESUME_MASTER) {
+      return apiError('RESUME_MASTER KV binding is not configured. Send master in the request or upload it with PUT /master.', 500);
+    }
+    let stored = null;
+    try {
+      stored = await env.RESUME_MASTER.get('master', 'json');
+    } catch {
+      stored = null;
+    }
+    master = stored;
+    if (!isMaster(master)) {
+      return apiError('No master resume is stored. Upload it with PUT /master or send master in the request.', 409);
+    }
+  }
+
+  const ai = body.ai === true;
+  if (ai && !env.DEEPSEEK_API_KEY) {
+    return apiError('ai was requested but DEEPSEEK_API_KEY is not configured.', 400);
+  }
+
+  const company = String(body.company || '').trim().slice(0, 80);
+
+  try {
+    const pdf = await generatePdf(env, { master, jd, ai });
+    return new Response(pdf, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${pdfFilename(company)}"`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  } catch (error) {
+    return apiError(`PDF generation failed: ${error?.message || 'unknown error'}`, 502);
+  }
+}
+
 export default {
   async fetch(request, env = {}) {
+    const url = new URL(request.url);
+    if (url.pathname === PDF_ROUTE) return handleTailorPdf(request, env);
+    if (url.pathname === MASTER_ROUTE) return handleMaster(request, env);
+
     const origin = request.headers.get('Origin') || '';
     const allowed = allowedOrigins(env);
     // The proxy is for the deployed app and local testing only. This check

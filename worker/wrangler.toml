@@ -3,6 +3,12 @@ main = "deepseek-proxy.mjs"
 compatibility_date = "2026-11-16"
 workers_dev = true
 
+# Browser Rendering is used by POST /tailor.pdf to print the same two-page
+# resume that the live app shows. The KV binding for the private master is
+# added by the deploy workflow (see .github/workflows/deploy-proxy.yml).
+[browser]
+binding = "BROWSER"
+
 [vars]
 # The GitHub Pages origin plus local testing. Add your custom domain here if
 # you serve the app from somewhere else, then redeploy the Worker.
