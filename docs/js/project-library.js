@@ -96,13 +96,25 @@ export const PROJECT_LIBRARY = [
   },
   {
     id: 'memory-map-v0',
-    name: 'Memory Map',
+    name: 'Memory Map Mobile',
     tech: 'React Native, Expo, TypeScript, Maps',
     link: 'https://github.com/naveenmorla1901/memory-map-v0',
     featured: false,
     bullets: [
       'Built a cross-platform **React Native/Expo** location-memory app for saving and exploring places on a map, with Android/iOS builds and a TypeScript codebase.',
       'Implemented map-based location storage and retrieval with reusable React Native components and a mobile-first interface.',
+    ],
+  },
+  {
+    id: 'memory-map-api',
+    name: 'Memory Map API',
+    tech: 'Python, Django, Django REST Framework, Firebase, Redis, pytest',
+    link: 'https://github.com/naveenmorla1901/memory-map',
+    featured: false,
+    bullets: [
+      'Built a **Django REST** backend for a location-memory app with Firebase Authentication, JWT, user accounts, saved locations, and an Instagram media analyzer, backed by Django ORM models and migrations.',
+      'Applied **data modeling** to design indexed UUID models for locations, saved locations, and Instagram reels, including soft deletes, version fields, unique constraints, and spatial/category/sync indexes.',
+      'Implemented a **data sync** layer with Firebase Realtime Database, version-and-timestamp conflict resolution, exponential-backoff retries, and a Redis cache, with pytest coverage for auth, sync, and Firebase behavior.',
     ],
   },
   {
@@ -147,6 +159,17 @@ export const PROJECT_LIBRARY = [
     bullets: [
       'Built classical ML notebooks covering decision trees, KNN regression, and logistic regression with preprocessing, model training, and evaluation on public datasets.',
       'Implemented batch resume parsing with pyresparser to extract structured candidate details from PDF, DOCX, and TXT files.',
+    ],
+  },
+  {
+    id: 'stat-5020-body-fat-regression',
+    name: 'Body Fat Regression (R)',
+    tech: 'R, R Markdown, multiple linear regression, ANOVA, VIF, regression diagnostics',
+    link: 'https://github.com/naveenmorla1901/STAT-5020-R-Programing-',
+    featured: false,
+    bullets: [
+      "Built a **multiple linear regression** model in R to predict women's body fat percentage from anthropometric variables across 136 subjects, using stepwise selection and adjusted R-squared to choose the final model.",
+      "Validated the model with **ANOVA**, VIF, confidence intervals, residual diagnostics, and outlier/influence measures (Cook's distance, DFFITS, COVRATIO); published the analysis as an R Markdown report.",
     ],
   },
   {
