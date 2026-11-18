@@ -31,8 +31,13 @@ function normalizeEndpoint(value = '') {
 }
 
 function apiBase() {
-  const fromQuery = new URLSearchParams(location.search).get('proxy') || '';
-  return normalizeEndpoint(fromQuery)
+  // A query override is only for local testing. Accepting an arbitrary remote
+  // host here could trick a saved token into being sent to another server.
+  const fromQuery = normalizeEndpoint(new URLSearchParams(location.search).get('proxy') || '');
+  const localQuery = /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(fromQuery)
+    ? fromQuery
+    : '';
+  return localQuery
     || normalizeEndpoint(readSavedProxyUrl())
     || DEFAULT_ENDPOINT;
 }
