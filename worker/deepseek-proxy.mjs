@@ -311,7 +311,11 @@ function candidateRelevant(candidate, { originalHost, companyKey, titleSet, orig
   const companyMatch = companyKey.length >= 3 && blob.includes(companyKey);
   const candidateTokens = new Set(titleTokens(candidate.title || ''));
   const overlap = [...titleSet].filter((token) => candidateTokens.has(token));
-  const titleMatch = overlap.length >= 2 || overlap.some((token) => token.length >= 6);
+  // Require most of the role words, not just "AI" and "Engineer". This keeps
+  // a parent-company or same-family posting from replacing the requested job.
+  const titleMatch = titleSet.size > 0
+    && overlap.length >= Math.min(titleSet.size, 3)
+    && overlap.length >= 2;
   const idMatch = Boolean(originalId) && `${candidate.url} ${candidate.title || ''}`.includes(originalId);
   if (sameHost) return titleMatch || idMatch;
   return Boolean(companyMatch && titleMatch);
@@ -423,7 +427,7 @@ async function fetchJobDescriptionFromUrl(env, { url, company = '', jobTitle = '
     }
   }
 
-  if (query.length >= 3) {
+  if (!blockedPage && query.length >= 3) {
     try {
       const search = await deepSeekTool(env, '/v1/tools/search', {
         query,
