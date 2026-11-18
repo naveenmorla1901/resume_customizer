@@ -523,14 +523,16 @@ async function fetchJobDescriptionFromUrl(env, { url, company = '', jobTitle = '
     };
   }
 
+  const unreadable = fetchError
+    && [401, 403, 404, 451].includes(Number(fetchError.status));
   const error = new Error(
-    blockedPage
-      ? 'The job site blocked automated reading with a bot or access gate. Open the posting in your browser, copy the description, and paste it instead.'
+    blockedPage || unreadable
+      ? 'The job site blocked automated reading or did not return the posting. Open it in your browser, copy the description, and paste it instead.'
       : fetchError?.message
         ? `Could not read the job posting: ${fetchError.message}`
         : 'The job posting did not contain enough readable text. Paste the job description instead.',
   );
-  error.status = blockedPage ? 422 : fetchError?.status || 422;
+  error.status = blockedPage || unreadable ? 422 : fetchError?.status || 422;
   throw error;
 }
 
