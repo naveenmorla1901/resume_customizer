@@ -281,7 +281,9 @@ export async function fetchJobDescription(value, options = {}) {
     ? 'The job site blocked automated reading.'
     : 'The job site did not return readable text.';
   const cloudNote = cloudError ? ` Cloud reader: ${cloudError.message}` : '';
-  throw new Error(`${detail}${cloudNote} Open the posting, copy the description, and paste it here.`);
+  const alreadySaysPaste = /paste (?:it|the description)/i.test(cloudError?.message || '');
+  const instruction = alreadySaysPaste ? '' : ' Open the posting, copy the description, and paste it here.';
+  throw new Error(`${detail}${cloudNote}${instruction}`);
 }
 
 export { normalizeUrl };
