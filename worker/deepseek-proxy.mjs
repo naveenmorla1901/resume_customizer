@@ -197,6 +197,126 @@ function cleanFetchedText(value) {
   return text.trim();
 }
 
+const BLOCKED_PAGE_PATTERNS = [
+  /\bclearrelay\b/i,
+  /open this device as an? (?:recorder|admin|projector)/i,
+  /enter the access key/i,
+  /performing security verification/i,
+  /checking (?:your browser|if the site connection is secure)/i,
+  /verif(?:y|ying) (?:that )?you are (?:a )?human/i,
+  /enable javascript and cookies to continue/i,
+  /^\s*(?:access denied|request blocked|attention required)\b/i,
+];
+
+const JOB_BOARD_HOST_RE = /(?:greenhouse\.io|lever\.co|ashbyhq\.com|myworkdayjobs\.com|smartrecruiters\.com|jobvite\.com|icims\.com|workable\.com|recruitee\.com)$/i;
+const COMPANY_STOPWORDS = new Set(['the', 'and', 'inc', 'llc', 'corp', 'corporation', 'company', 'ltd', 'limited', 'group', 'holdings']);
+const TITLE_STOPWORDS = new Set([
+  'job', 'jobs', 'role', 'position', 'opportunity', 'career', 'careers',
+  'the', 'and', 'for', 'with', 'at', 'in', 'of', 'to', 'a', 'an', 'on', 'or',
+  'senior', 'sr', 'staff', 'lead', 'principal', 'ii', 'iii', 'iv',
+]);
+
+function looksLikeBlockedPage(value = '') {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  if (/\bprivate access\b/i.test(text) && /\b(?:access key|recorder|projector|this device)\b/i.test(text)) {
+    return true;
+  }
+  if (BLOCKED_PAGE_PATTERNS.some((pattern) => pattern.test(text))) return true;
+  return text.length < 1200 && /^(?:just a moment|access denied|forbidden|unauthorized)\b/i.test(text);
+}
+
+function looksLikeJobText(value = '') {
+  const text = String(value || '').trim();
+  if (text.length < MIN_JD_CHARS) return false;
+  if (!/[a-z]{3}/i.test(text)) return false;
+  return !looksLikeBlockedPage(text);
+}
+
+function hostBase(value = '') {
+  try {
+    return new URL(String(value)).hostname
+      .replace(/^www\./, '')
+      .replace(/^(?:jobs|careers|job-boards|boards|apply)\./, '')
+      .toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function deriveCompanyFromUrl(value = '') {
+  try {
+    const url = new URL(String(value));
+    const host = url.hostname.replace(/^www\./, '').toLowerCase();
+    if (JOB_BOARD_HOST_RE.test(host)) {
+      const part = url.pathname.split('/').filter(Boolean).find((segment) => (
+        !/^[a-z]{2}(?:-[a-z]{2})?$/i.test(segment)
+        && !/^(?:jobs?|careers?|positions?|apply|details?|en|us)$/i.test(segment)
+        && !/^\d+$/.test(segment)
+      ));
+      if (part) return part.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    const base = host.replace(/^(?:jobs|careers|job-boards|boards|apply)\./, '').split('.')[0];
+    return base && base.length >= 3 ? base : '';
+  } catch {
+    return '';
+  }
+}
+
+function deriveTitleFromUrl(value = '') {
+  try {
+    const url = new URL(String(value));
+    const segments = url.pathname.split('/').map((segment) => decodeURIComponent(segment)).filter(Boolean);
+    let candidate = segments[segments.length - 1] || '';
+    if (/^\d{5,}$/.test(candidate)) candidate = segments[segments.length - 2] || '';
+    if (!candidate || /^[a-z]{2}(?:-[a-z]{2})?$/i.test(candidate)) return '';
+    if (/^[0-9a-f]{8,}(?:-[0-9a-f]{4,}){1,}$/i.test(candidate)) return '';
+    const words = candidate
+      .replace(/[._]+/g, ' ')
+      .replace(/[-_]+/g, ' ')
+      .replace(/\bslash\b/gi, ' ')
+      .replace(/^\d+\s*/, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .filter((word) => word.length >= 2 && /[a-z]/i.test(word));
+    return words.length >= 2 ? words.join(' ').slice(0, 120) : '';
+  } catch {
+    return '';
+  }
+}
+
+function companyKeyFrom(value = '') {
+  const words = String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(' ')
+    .filter((word) => word.length >= 2 && !COMPANY_STOPWORDS.has(word));
+  return words[0] || '';
+}
+
+function titleTokens(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9+#.]+/g, ' ')
+    .split(' ')
+    .filter((token) => token.length >= 2 && !/^\d+$/.test(token) && !TITLE_STOPWORDS.has(token));
+}
+
+function candidateRelevant(candidate, { originalHost, companyKey, titleSet, originalId }) {
+  const candidateHost = hostBase(candidate.url);
+  if (!candidateHost) return false;
+  const sameHost = candidateHost === originalHost;
+  const blob = `${candidate.title || ''} ${candidate.url} ${String(candidate.content || '').slice(0, 3000)}`.toLowerCase();
+  const companyMatch = companyKey.length >= 3 && blob.includes(companyKey);
+  const candidateTokens = new Set(titleTokens(candidate.title || ''));
+  const overlap = [...titleSet].filter((token) => candidateTokens.has(token));
+  const titleMatch = overlap.length >= 2 || overlap.some((token) => token.length >= 6);
+  const idMatch = Boolean(originalId) && `${candidate.url} ${candidate.title || ''}`.includes(originalId);
+  if (sameHost) return titleMatch || idMatch;
+  return Boolean(companyMatch && titleMatch);
+}
+
 async function deepSeekTool(env, path, payload) {
   if (!env.DEEPSEEK_API_KEY) {
     const error = new Error('DEEPSEEK_API_KEY is not configured on the Worker.');
@@ -254,26 +374,42 @@ async function fetchJobDescriptionFromUrl(env, { url, company = '', jobTitle = '
 
   let fetched = null;
   let fetchError = null;
+  let blockedPage = false;
   try {
     const page = await deepSeekTool(env, '/v1/tools/fetch', { url: normalized });
     const text = cleanFetchedText(page?.content);
-    fetched = { text, title: String(page?.title || '').trim(), url: normalized };
-    if (text.length >= MIN_FETCHED_JD_CHARS) {
-      return {
-        text: text.slice(0, MAX_JD_CHARS),
-        title: fetched.title,
-        url: normalized,
-        source: 'fetch',
-      };
+    const title = String(page?.title || '').trim();
+    if (looksLikeBlockedPage(text)) {
+      // Bot challenges and device/access gates are not job descriptions.
+      blockedPage = true;
+      fetched = { text: '', title, url: normalized };
+      fetchError = new Error('The job site returned a bot or access gate instead of the posting.');
+      fetchError.status = 422;
+    } else {
+      fetched = { text, title, url: normalized };
+      if (text.length >= MIN_FETCHED_JD_CHARS) {
+        return {
+          text: text.slice(0, MAX_JD_CHARS),
+          title,
+          url: normalized,
+          source: 'fetch',
+        };
+      }
     }
   } catch (error) {
     fetchError = error;
   }
 
-  const terms = [company, jobTitle, fetched?.title]
+  const companyHint = String(company || '').replace(/\s+/g, ' ').trim()
+    || deriveCompanyFromUrl(normalized);
+  const titleHint = String(jobTitle || '').replace(/\s+/g, ' ').trim()
+    || deriveTitleFromUrl(normalized)
+    || (!blockedPage && fetched?.title)
+    || '';
+  const terms = [companyHint, titleHint, !blockedPage && fetched?.title]
     .map((value) => String(value || '').replace(/\s+/g, ' ').trim())
     .filter(Boolean);
-  let query = terms.join(' ').slice(0, 128).trim();
+  let query = [...new Set(terms)].join(' ').slice(0, 128).trim();
   if (query.length < 3) {
     try {
       const parsed = new URL(normalized);
@@ -294,43 +430,51 @@ async function fetchJobDescriptionFromUrl(env, { url, company = '', jobTitle = '
         count: 5,
         need_content: true,
       });
-      const originalHost = (() => {
+      const originalHost = hostBase(normalized);
+      const originalId = (() => {
         try {
-          return new URL(normalized).hostname.replace(/^www\./, '');
+          return (new URL(normalized).pathname.match(/\d{6,}/) || [''])[0];
         } catch {
           return '';
         }
       })();
+      const companyKey = companyKeyFrom(companyHint);
+      const titleSet = new Set(titleTokens(titleHint));
       const candidates = (Array.isArray(search?.results) ? search.results : [])
         .filter((result) => result && result.url)
         .map((result) => {
-          let host = '';
-          try {
-            host = new URL(result.url).hostname.replace(/^www\./, '');
-          } catch {
-            host = '';
-          }
+          const host = hostBase(result.url);
           const title = String(result.title || '').toLowerCase();
-          const titleHit = [company, jobTitle].some((term) => term && title.includes(String(term).toLowerCase()));
+          const titleHit = [companyHint, titleHint].some((term) => term && title.includes(String(term).toLowerCase()));
           const rank = (Number(result.rerank_score) || 0)
             + (host && host === originalHost ? 2 : 0)
             + (titleHit ? 1 : 0);
           return { ...result, rank };
+        })
+        .filter((candidate) => {
+          // Only accept the same posting or a result that names both the
+          // company and the role. A generic "ML Engineer" hit is not enough.
+          const candidateUrl = normalizeHttpUrl(candidate.url);
+          if (candidateUrl && candidateUrl === normalized) return true;
+          return candidateRelevant(candidate, { originalHost, companyKey, titleSet, originalId });
         })
         .sort((a, b) => b.rank - a.rank);
 
       const summaries = [];
       for (const candidate of candidates) {
         const content = cleanFetchedText(candidate.content);
-        if (content.length >= MIN_FETCHED_JD_CHARS) {
+        if (content.length >= MIN_FETCHED_JD_CHARS && looksLikeJobText(content)) {
           return {
             text: content.slice(0, MAX_JD_CHARS),
-            title: String(candidate.title || fetched?.title || '').trim(),
+            title: String(candidate.title || fetched?.title || titleHint || '').trim(),
             url: normalizeHttpUrl(candidate.url) || normalized,
             source: 'search-content',
           };
         }
-        if (candidate.summary) summaries.push(cleanFetchedText(candidate.summary));
+        if (candidate.summary) {
+          const summary = cleanFetchedText(candidate.summary);
+          if (summary.length >= MIN_JD_CHARS && looksLikeJobText(summary)) summaries.push(summary);
+        }
       }
 
       for (const candidate of candidates.slice(0, 2)) {
@@ -339,10 +483,10 @@ async function fetchJobDescriptionFromUrl(env, { url, company = '', jobTitle = '
         try {
           const page = await deepSeekTool(env, '/v1/tools/fetch', { url: candidateUrl });
           const text = cleanFetchedText(page?.content);
-          if (text.length >= MIN_FETCHED_JD_CHARS) {
+          if (text.length >= MIN_FETCHED_JD_CHARS && looksLikeJobText(text)) {
             return {
               text: text.slice(0, MAX_JD_CHARS),
-              title: String(page?.title || candidate.title || '').trim(),
+              title: String(page?.title || candidate.title || titleHint || '').trim(),
               url: candidateUrl,
               source: 'search+fetch',
             };
@@ -356,7 +500,7 @@ async function fetchJobDescriptionFromUrl(env, { url, company = '', jobTitle = '
       if (combined.length >= MIN_FETCHED_JD_CHARS) {
         return {
           text: combined,
-          title: String(candidates[0]?.title || fetched?.title || '').trim(),
+          title: String(candidates[0]?.title || fetched?.title || titleHint || '').trim(),
           url: normalized,
           source: 'search-summary',
         };
@@ -366,7 +510,7 @@ async function fetchJobDescriptionFromUrl(env, { url, company = '', jobTitle = '
     }
   }
 
-  if (fetched?.text && fetched.text.length >= MIN_JD_CHARS) {
+  if (fetched?.text && fetched.text.length >= MIN_JD_CHARS && looksLikeJobText(fetched.text)) {
     return {
       text: fetched.text.slice(0, MAX_JD_CHARS),
       title: fetched.title,
@@ -376,11 +520,13 @@ async function fetchJobDescriptionFromUrl(env, { url, company = '', jobTitle = '
   }
 
   const error = new Error(
-    fetchError?.message
-      ? `Could not read the job posting: ${fetchError.message}`
-      : 'The job posting did not contain enough readable text. Paste the job description instead.',
+    blockedPage
+      ? 'The job site blocked automated reading with a bot or access gate. Open the posting in your browser, copy the description, and paste it instead.'
+      : fetchError?.message
+        ? `Could not read the job posting: ${fetchError.message}`
+        : 'The job posting did not contain enough readable text. Paste the job description instead.',
   );
-  error.status = fetchError?.status || 422;
+  error.status = blockedPage ? 422 : fetchError?.status || 422;
   throw error;
 }
 

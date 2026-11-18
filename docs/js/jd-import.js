@@ -121,10 +121,22 @@ function looksLikeJobText(text = '') {
   const value = String(text || '').trim();
   if (value.length < 200) return false;
   if (!/[a-z]{3}/i.test(value)) return false;
-  // A login wall or cookie notice is not a job description.
-  if (/enable javascript|sign in to continue|cookie settings/i.test(value) && value.length < 600) {
+  // A login wall, bot challenge, or access gate is not a job description.
+  if (
+    /enable javascript|sign in to continue|cookie settings/i.test(value)
+    && value.length < 600
+  ) {
     return false;
   }
+  if (/\bclearrelay\b/i.test(value)) return false;
+  if (/\bprivate access\b/i.test(value) && /\b(?:access key|recorder|projector|this device)\b/i.test(value)) {
+    return false;
+  }
+  if (/performing security verification|checking (?:your browser|if the site connection is secure)/i.test(value)) {
+    return false;
+  }
+  if (/verif(?:y|ying) (?:that )?you are (?:a )?human/i.test(value)) return false;
+  if (/enable javascript and cookies to continue/i.test(value)) return false;
   return true;
 }
 

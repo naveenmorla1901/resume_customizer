@@ -249,7 +249,7 @@ Invoke-WebRequest -Method Post `
   -OutFile 'Naveen_Morla_Acme_Data_Engineer.pdf'
 ```
 
-The Worker reads the page with DeepSeek Fetch (`/v1/tools/fetch`). If the page returns too little readable text, it searches for the role (`/v1/tools/search`) with content enabled, ranks results by relevance and the original host, and tries the best pages. A pasted `jobDescription` is always used directly; `jobUrl` is only a fallback when the description is missing or short.
+The Worker reads the page with DeepSeek Fetch (`/v1/tools/fetch`). If the page returns too little readable text, it searches for the role (`/v1/tools/search`) with content enabled, ranks results by relevance and the original host, and tries the best pages. A fallback result must name both the company and the role, so a generic "ML Engineer" hit cannot become your job description. Bot challenges and device/access gates (for example Cloudflare "Just a moment", "Private access", or Clear Relay screens) are rejected with a clear error that asks you to paste the description. A pasted `jobDescription` is always used directly; `jobUrl` is only a fallback when the description is missing or short.
 
 To inspect what the Worker read before generating a PDF, call the authenticated fetch endpoint:
 
