@@ -120,7 +120,7 @@ function sectionWeightForTerm(sections, term) {
   return best;
 }
 
-const GENERIC_HEADING_RE = /^(?:title\s*:|url\s+source|markdown\s+content|published\s+time|about(?:\s+the)?(?:\s+(?:team|role|us|company|position|job|opportunity))?|the\s+(?:team|role|company|opportunity)|overview|summary|responsibilities|key\s+responsibilities|what\s+you(?:'|’)?ll\s+(?:do|need|be\s+doing)|what\s+we(?:'|’)?re\s+looking\s+for|who\s+you\s+are|requirements|qualifications|preferred(?:\s+qualifications)?|minimum\s+qualifications|basic\s+qualifications|benefits|perks|compensation|salary|pay\s+range|location|department|job\s+description|job\s+type|employment\s+type|in\s+this\s+(?:role|position)|you\s+(?:will|might|may|should)|day[ -]to[ -]day|reports?\s+to|why\s+(?:join|openai|us)|equal\s+opportunity)(?=\s|:|$)/i;
+const GENERIC_HEADING_RE = /^(?:title\s*:|url\s+source|markdown\s+content|published\s+time|back\s+to\s+(?:all\s+)?jobs?|view\s+(?:all\s+)?jobs?|apply(?:\s+now)?|save\s+(?:this\s+)?job|create\s+(?:a\s+)?job\s+alert|about(?:\s+the)?(?:\s+(?:team|role|us|company|position|job|opportunity))?|the\s+(?:team|role|company|opportunity)|overview|summary|responsibilities|key\s+responsibilities|what\s+you(?:'|’)?ll\s+(?:do|need|be\s+doing)|what\s+we(?:'|’)?re\s+looking\s+for|who\s+you\s+are|requirements|qualifications|preferred(?:\s+qualifications)?|minimum\s+qualifications|basic\s+qualifications|benefits|perks|compensation|salary|pay\s+range|location|department|job\s+description|job\s+type|employment\s+type|in\s+this\s+(?:role|position)|you\s+(?:will|might|may|should)|day[ -]to[ -]day|reports?\s+to|why\s+(?:join|openai|us)|equal\s+opportunity)(?=\s|:|$)/i;
 
 function looksLikeTitle(line = '') {
   const value = String(line || '').trim();
