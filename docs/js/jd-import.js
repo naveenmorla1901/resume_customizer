@@ -193,6 +193,13 @@ function cloudSourceLabel(source = '') {
   return /^fetch/.test(String(source)) ? 'DeepSeek Fetch' : 'DeepSeek Search';
 }
 
+function cloudWarning(error) {
+  const message = String(error?.message || '')
+    .replace(/\s*Open it in your browser, copy the description, and paste it instead\.?/i, '')
+    .trim();
+  return message ? `DeepSeek could not read this page: ${message}` : '';
+}
+
 async function fetchWithCloudReader(url, { token, endpoint, signal }) {
   const base = normalizeEndpoint(endpoint) || DEFAULT_WORKER_ENDPOINT;
   const data = await fetchJson(`${base}/fetch-jd`, {
@@ -267,7 +274,7 @@ export async function fetchJobDescription(value, options = {}) {
           source: attempt.label,
           url,
           reader: 'public',
-          warning: cloudError ? `DeepSeek reader failed: ${cloudError.message}` : '',
+          warning: cloudError ? cloudWarning(cloudError) : '',
         };
       }
       lastError = new Error('The page did not return readable job text.');
