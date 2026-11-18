@@ -1,14 +1,17 @@
 /**
  * Read a job description from a pasted URL.
  *
- * Job boards rarely allow direct cross-origin reads. We use Jina Reader
- * first because it returns clean text and supports CORS. If it is blocked,
- * fall back to a public read-only proxy and finally to a direct fetch.
+ * Two readers are available:
+ *   1. DeepSeek through the Worker (`/fetch-jd`) when the user supplies the
+ *      Worker token. This supports JS-heavy pages and a Search fallback.
+ *   2. Jina Reader with public-proxy and direct-fetch fallbacks, which needs
+ *      no token and keeps the app usable out of the box.
  * The extracted text is what gets saved; the URL never replaces the JD.
  */
 
 const JINA_READER = 'https://r.jina.ai/';
 const ALL_ORIGINS = 'https://api.allorigins.win/raw?url=';
+export const DEFAULT_WORKER_ENDPOINT = 'https://resume-deepseek-proxy.morla-naveen1901.workers.dev';
 
 function normalizeUrl(value = '') {
   const raw = String(value || '').trim();
@@ -23,6 +26,26 @@ function normalizeUrl(value = '') {
   if (!/^https?:$/i.test(url.protocol)) return '';
   if (!url.hostname || !url.hostname.includes('.')) return '';
   return url.toString();
+}
+
+/**
+ * Keep worker endpoints compatible with the settings validator: https
+ * everywhere, plain http only for a local test server.
+ */
+export function normalizeEndpoint(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
+  let url;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    return '';
+  }
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(url.hostname);
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) return '';
+  if (url.username || url.password) return '';
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
 }
 
 export function isUrlOnly(value = '') {
@@ -128,15 +151,82 @@ async function fetchText(url, { signal, timeout = 35000 } = {}) {
   }
 }
 
+async function fetchJson(url, { method = 'GET', headers, body, signal, timeout = 60000 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  const onAbort = () => controller.abort();
+  if (signal) signal.addEventListener('abort', onAbort, { once: true });
+  try {
+    const response = await fetch(url, {
+      method,
+      headers,
+      body,
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(data?.error?.message || `The cloud reader returned HTTP ${response.status}.`);
+      error.status = response.status;
+      throw error;
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', onAbort);
+  }
+}
+
+function cloudSourceLabel(source = '') {
+  return /^fetch/.test(String(source)) ? 'DeepSeek Fetch' : 'DeepSeek Search';
+}
+
+async function fetchWithCloudReader(url, { token, endpoint, signal }) {
+  const base = normalizeEndpoint(endpoint) || DEFAULT_WORKER_ENDPOINT;
+  const data = await fetchJson(`${base}/fetch-jd`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ url }),
+    signal,
+    timeout: 60000,
+  });
+  const text = String(data?.text || '').trim();
+  if (!looksLikeJobText(text)) {
+    const error = new Error('The cloud reader returned too little readable text.');
+    error.status = 422;
+    throw error;
+  }
+  return {
+    text,
+    source: cloudSourceLabel(data?.source),
+    url: normalizeUrl(data?.url) || url,
+    reader: 'deepseek',
+  };
+}
+
 /**
  * @param {string} value A URL, with or without a scheme.
- * @param {{signal?: AbortSignal}} options
- * @returns {Promise<{text: string, source: string, url: string}>}
+ * @param {{signal?: AbortSignal, token?: string, endpoint?: string}} options
+ * @returns {Promise<{text: string, source: string, url: string, reader: 'deepseek'|'public', warning?: string}>}
  */
 export async function fetchJobDescription(value, options = {}) {
   const url = normalizeUrl(value);
   if (!url) {
     throw new Error('Enter a valid http(s) job posting URL.');
+  }
+
+  const token = String(options.token || '').trim();
+  let cloudError = null;
+  if (token) {
+    try {
+      return await fetchWithCloudReader(url, { ...options, token });
+    } catch (error) {
+      if (error.name === 'AbortError') throw error;
+      cloudError = error;
+    }
   }
 
   const attempts = [
@@ -160,7 +250,13 @@ export async function fetchJobDescription(value, options = {}) {
     try {
       const text = await attempt.read();
       if (looksLikeJobText(text)) {
-        return { text, source: attempt.label, url };
+        return {
+          text,
+          source: attempt.label,
+          url,
+          reader: 'public',
+          warning: cloudError ? `DeepSeek reader failed: ${cloudError.message}` : '',
+        };
       }
       lastError = new Error('The page did not return readable job text.');
     } catch (error) {
@@ -172,7 +268,8 @@ export async function fetchJobDescription(value, options = {}) {
   const detail = lastError?.status === 403 || lastError?.status === 401
     ? 'The job site blocked automated reading.'
     : 'The job site did not return readable text.';
-  throw new Error(`${detail} Open the posting, copy the description, and paste it here.`);
+  const cloudNote = cloudError ? ` Cloud reader: ${cloudError.message}` : '';
+  throw new Error(`${detail}${cloudNote} Open the posting, copy the description, and paste it here.`);
 }
 
 export { normalizeUrl };

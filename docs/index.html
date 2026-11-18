@@ -65,6 +65,20 @@
             <button class="btn btn-ghost btn-sm" id="btn-load-url" type="button">Load URL</button>
           </div>
           <p class="mini-note jd-url-status" id="jd-url-status" hidden></p>
+          <details class="cloud-reader" id="cloud-reader">
+            <summary>
+              <span>DeepSeek cloud reader <span class="cloud-reader-tag">optional</span></span>
+              <span class="cloud-reader-state" id="cloud-reader-state">Off</span>
+            </summary>
+            <div class="cloud-reader-body">
+              <label class="cloud-reader-label" for="jd-token">Worker token</label>
+              <div class="cloud-reader-input">
+                <input id="jd-token" type="password" autocomplete="off" spellcheck="false" placeholder="PDF_API_TOKEN" aria-describedby="cloud-reader-note">
+                <button class="link-btn" id="btn-clear-jd-token" type="button">Clear</button>
+              </div>
+              <p class="mini-note" id="cloud-reader-note">Stored in this tab only. When set, <strong>Load URL</strong> tries DeepSeek Fetch and Search first, then falls back to the public reader. Use the same token as the History page.</p>
+            </div>
+          </details>
           <textarea id="jd-input" rows="9" placeholder="Paste the full job post here, or paste a job posting URL and the app will read it. Include the title, requirements, and preferred qualifications."></textarea>
           <div class="textarea-foot">
             <span id="jd-count">0 characters</span>

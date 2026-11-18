@@ -74,6 +74,25 @@ function historyJson(body, status = 200, origin = '') {
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+function fetchJdCorsHeaders(origin) {
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Access-Control-Max-Age': '86400',
+    Vary: 'Origin',
+  };
+}
+
+function fetchJdJson(body, status = 200, origin = '') {
+  const headers = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+  };
+  if (origin) Object.assign(headers, fetchJdCorsHeaders(origin));
+  return new Response(JSON.stringify(body), { status, headers });
+}
+
 function jsonResponse(body, status, origin) {
   return new Response(JSON.stringify(body), {
     status,
@@ -866,12 +885,26 @@ async function handleTailorPdf(request, env) {
 }
 
 async function handleFetchJd(request, env) {
+  const origin = request.headers.get('Origin') || '';
+  const allowed = allowedOrigins(env);
+  if (origin && !allowed.includes(origin)) {
+    return new Response(JSON.stringify({ error: { message: 'Origin not allowed.' } }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    });
+  }
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: fetchJdCorsHeaders(origin) });
+  }
+
   const auth = authorized(request, env);
-  if (!auth.ok) return apiError(auth.message, auth.status);
-  if (request.method !== 'POST') return apiError('Method not allowed. Use POST.', 405);
+  if (!auth.ok) return fetchJdJson({ error: { message: auth.message } }, auth.status, origin);
+  if (request.method !== 'POST') {
+    return fetchJdJson({ error: { message: 'Method not allowed. Use POST.' } }, 405, origin);
+  }
 
   const parsed = await readJsonBody(request, MAX_PDF_BODY_BYTES);
-  if (parsed.error) return apiError(parsed.error, parsed.status);
+  if (parsed.error) return fetchJdJson({ error: { message: parsed.error } }, parsed.status, origin);
   const body = parsed.body;
 
   try {
@@ -880,18 +913,18 @@ async function handleFetchJd(request, env) {
       company: String(body.company || '').trim().slice(0, 80),
       jobTitle: String(body.jobTitle || body.title || '').trim().slice(0, 120),
     });
-    return apiJson({
+    return fetchJdJson({
       ok: true,
       title: result.title,
       url: result.url,
       source: result.source,
       chars: result.text.length,
       text: result.text,
-    });
+    }, 200, origin);
   } catch (error) {
     const status = Number(error?.status);
     const httpStatus = status >= 400 && status < 500 ? status : 502;
-    return apiError(error?.message || 'Could not read the job posting.', httpStatus);
+    return fetchJdJson({ error: { message: error?.message || 'Could not read the job posting.' } }, httpStatus, origin);
   }
 }
 

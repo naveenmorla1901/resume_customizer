@@ -78,6 +78,51 @@ const state = {
 const DEFAULT_TAILOR_NOTE = 'Tailoring keeps your wording factual: it selects, reorders, aligns, and trims existing content.';
 let lastAutoLoadedUrl = '';
 
+// Shared with history.js: one Worker token per browser tab, never localStorage.
+const JD_TOKEN_KEY = 'resumeStudio.workerToken';
+const LEGACY_JD_TOKEN_KEY = 'resumeStudio.historyToken';
+
+function loadJdToken() {
+  try {
+    return sessionStorage.getItem(JD_TOKEN_KEY)
+      || sessionStorage.getItem(LEGACY_JD_TOKEN_KEY)
+      || '';
+  } catch {
+    return '';
+  }
+}
+
+function saveJdToken(value) {
+  try {
+    const token = String(value || '').trim();
+    if (token) {
+      sessionStorage.setItem(JD_TOKEN_KEY, token);
+      sessionStorage.removeItem(LEGACY_JD_TOKEN_KEY);
+    } else {
+      sessionStorage.removeItem(JD_TOKEN_KEY);
+      sessionStorage.removeItem(LEGACY_JD_TOKEN_KEY);
+    }
+  } catch {
+    // Session storage can be unavailable in private or embedded contexts.
+  }
+}
+
+function workerEndpoint() {
+  try {
+    return normalizeProxyUrl(state.settings?.proxyUrl || '');
+  } catch {
+    return '';
+  }
+}
+
+function updateCloudReaderState() {
+  const token = ($('jd-token')?.value || '').trim();
+  const node = $('cloud-reader-state');
+  if (!node) return;
+  node.textContent = token ? 'On' : 'Off';
+  node.classList.toggle('on', Boolean(token));
+}
+
 /* ------------------------------------------------------------------ */
 /* Small UI helpers                                                    */
 /* ------------------------------------------------------------------ */
@@ -701,14 +746,26 @@ async function loadJdFromUrl(value, opts = {}) {
     $('jd-url').focus();
     return '';
   }
+  const token = ($('jd-token')?.value || '').trim() || loadJdToken();
   setUrlLoading(true);
   try {
-    const result = await fetchJobDescription(url);
+    const result = await fetchJobDescription(url, {
+      token,
+      endpoint: workerEndpoint(),
+    });
     lastAutoLoadedUrl = '';
     applyJdText(result.text);
     $('jd-url').value = '';
-    updateLoadingTextNow('Readable job text loaded. Review it, then tailor.');
-    toast(`Loaded the full job post via ${result.source}.`, 'success');
+    const note = result.warning
+      ? `Loaded via ${result.source}. ${result.warning}`
+      : `Loaded via ${result.source}. Review it, then tailor.`;
+    updateLoadingTextNow(note);
+    toast(
+      result.warning
+        ? `Loaded via ${result.source}. ${result.warning}`
+        : `Loaded the full job post via ${result.source}.`,
+      result.warning ? '' : 'success',
+    );
     if (opts.focus !== false) $('jd-input').focus();
     return result.text;
   } catch (error) {
@@ -717,6 +774,10 @@ async function loadJdFromUrl(value, opts = {}) {
       toast('Stopped reading the job URL.', '');
     } else {
       toast(error.message || 'Could not read that job URL. Paste the description instead.', 'error');
+      if (!token) {
+        $('cloud-reader')?.setAttribute('open', '');
+        updateLoadingTextNow('Tip: add the Worker token under Cloud reader to try DeepSeek Fetch/Search, or paste the description.');
+      }
     }
     return '';
   } finally {
@@ -1133,6 +1194,21 @@ function bindEvents() {
     $('jd-input').focus();
     toast('Sample job description loaded. Tailor when you are ready.', '');
   });
+  const jdTokenInput = $('jd-token');
+  if (jdTokenInput) {
+    jdTokenInput.value = loadJdToken();
+    updateCloudReaderState();
+    jdTokenInput.addEventListener('input', () => {
+      saveJdToken(jdTokenInput.value);
+      updateCloudReaderState();
+    });
+    $('btn-clear-jd-token')?.addEventListener('click', () => {
+      jdTokenInput.value = '';
+      saveJdToken('');
+      updateCloudReaderState();
+      jdTokenInput.focus();
+    });
+  }
   $('ai-toggle').addEventListener('change', () => {
     state.settings = { ...state.settings, useAI: $('ai-toggle').checked };
     saveSettings(state.settings);

@@ -1,10 +1,30 @@
 import { escapeHtml } from './util.js';
 
 const DEFAULT_ENDPOINT = 'https://resume-deepseek-proxy.morla-naveen1901.workers.dev';
-const TOKEN_KEY = 'resumeStudio.historyToken';
+const TOKEN_KEY = 'resumeStudio.workerToken';
+const LEGACY_TOKEN_KEY = 'resumeStudio.historyToken';
 const SETTINGS_KEY = 'resumeStudio.v1.settings';
 
 const $ = (id) => document.getElementById(id);
+
+function loadSavedToken() {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY)
+      || sessionStorage.getItem(LEGACY_TOKEN_KEY)
+      || '';
+  } catch {
+    return '';
+  }
+}
+
+function saveToken(token) {
+  try {
+    sessionStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.removeItem(LEGACY_TOKEN_KEY);
+  } catch {
+    // The request can still use the value from the input.
+  }
+}
 
 function readSavedProxyUrl() {
   try {
@@ -198,14 +218,14 @@ function render(items) {
 }
 
 async function loadHistory() {
-  const token = ($('history-token').value || '').trim() || sessionStorage.getItem(TOKEN_KEY) || '';
+  const token = ($('history-token').value || '').trim() || loadSavedToken();
   if (!token) {
     showMessage('Enter the Worker token to load the history.', 'error');
     $('history-token').focus();
     return;
   }
 
-  sessionStorage.setItem(TOKEN_KEY, token);
+  saveToken(token);
   setBusy(true);
   setStatus('Loading…');
   showMessage('');
@@ -239,7 +259,7 @@ async function loadHistory() {
 }
 
 const tokenInput = $('history-token');
-const savedToken = sessionStorage.getItem(TOKEN_KEY) || '';
+const savedToken = loadSavedToken();
 if (savedToken) tokenInput.value = savedToken;
 
 $('history-endpoint').textContent = `Worker: ${apiBase()}`;
