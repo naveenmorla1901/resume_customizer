@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Review previous cloud resume tailoring calls, ATS scores, and generated PDFs.">
+  <meta name="theme-color" content="#1f3864">
+  <title>Resume Studio — Tailoring history</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Resume Studio home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+        </span>
+        <span>
+          <strong>Resume Studio</strong>
+          <small>Tailoring history</small>
+        </span>
+      </a>
+      <div class="topbar-actions">
+        <span class="status-pill" id="history-status">
+          <span class="status-dot"></span>
+          <span id="history-status-text">Token required</span>
+        </span>
+        <a class="btn btn-ghost btn-sm" href="./">Back to studio</a>
+      </div>
+    </header>
+
+    <main class="history-page">
+      <section class="card" aria-labelledby="history-title">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Cloud activity</p>
+            <h1 id="history-title">Previous tailoring calls</h1>
+          </div>
+          <span class="badge badge-muted" id="history-count">No calls loaded</span>
+        </div>
+        <p class="helper">
+          Each PDF created by the MCP tool or <code>POST /tailor.pdf</code> is recorded on the Worker for 90 days.
+          Enter the Worker token to read the log. The token stays in this tab's session storage and is never saved to disk.
+        </p>
+        <form class="history-token-form" id="history-token-form">
+          <div class="history-token-field">
+            <label class="eyebrow" for="history-token">Worker token</label>
+            <input id="history-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="PDF_API_TOKEN">
+          </div>
+          <button class="btn btn-primary btn-sm" id="btn-history-load" type="submit">Load history</button>
+          <button class="btn btn-ghost btn-sm" id="btn-history-refresh" type="button" disabled>Refresh</button>
+        </form>
+        <p class="mini-note history-message" id="history-message" role="status" aria-live="polite" hidden></p>
+
+        <div class="history-summary" id="history-summary" hidden>
+          <div class="history-stat">
+            <span>Latest ATS score</span>
+            <strong id="summary-latest">—</strong>
+          </div>
+          <div class="history-stat">
+            <span>Change from previous</span>
+            <strong id="summary-change">—</strong>
+          </div>
+          <div class="history-stat">
+            <span>Successful calls</span>
+            <strong id="summary-ok">—</strong>
+          </div>
+          <div class="history-stat">
+            <span>Failed calls</span>
+            <strong id="summary-error">—</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="history-list-title">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Newest first</p>
+            <h2 id="history-list-title">Call log</h2>
+          </div>
+        </div>
+        <div class="history-list" id="history-list"></div>
+        <div class="history-empty" id="history-empty">
+          Enter the Worker token and load the history to see cloud calls.
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <span>History is stored in Workers KV with a 90-day retention. PDF download links expire 60 minutes after generation.</span>
+      <span class="history-endpoint" id="history-endpoint"></span>
+    </footer>
+  </div>
+
+  <script type="module" src="js/history.js"></script>
+</body>
+</html>

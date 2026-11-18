@@ -11,7 +11,7 @@ The app is plain HTML, CSS, and JavaScript in [`docs/`](docs/) and is deployed w
 ## What it does
 
 - **Keeps the resume's design.** Exports a DOCX that matches the original Word layout: Letter paper, the same margins, Calibri/Carlito typography, navy section headings, right-aligned dates, and the same section order.
-- **Reads a job posting URL.** Paste a link instead of the description; the app reads the full posting through Jina Reader with public-reader and direct-fetch fallbacks. The URL is replaced by the extracted text so it can be reviewed and saved.
+- **Reads a job posting URL.** Paste a link instead of the description; the app reads the full posting through Jina Reader with public-reader and direct-fetch fallbacks. The URL is replaced by the extracted text so it can be reviewed and saved. Cloud PDF and MCP calls can pass `jobUrl` instead; the Worker reads it with DeepSeek Fetch and falls back to DeepSeek Search when the page is too thin.
 - **Emphasizes the latest role.** Lisinski Law Firm leads the experience section, with its most JD-relevant bullets first and its full bullet set kept whenever the two-page budget allows. JD wording is added only where that role already supports the same fact.
 - **Bolds the skills that matter.** Existing bold is preserved. Up to three JD-relevant terms per experience bullet are bolded in the preview, PDF, and DOCX, so a recruiter can scan the important tools without the font or layout changing.
 - **Prioritizes relevant tools.** Existing skills are regrouped and filtered so JD-relevant tools lead; unrelated tools are removed rather than added.
@@ -162,7 +162,7 @@ An origin is the scheme plus host, with no path. If you fork the repo, use a cus
 #### Limits and security
 
 - The Worker caps the request body at 1 MB, caps `max_tokens` at 4000, forces non-streaming responses, and allows only `deepseek-flash` and `deepseek-v4-pro`.
-- The Worker is stateless: it does not store resume content or job descriptions.
+- The Worker stores the private master in Workers KV, keeps temporary PDFs for 60 minutes, and writes a metadata-only history record with a 90-day TTL. Job-description text is processed in memory and is not retained.
 - The Worker URL is public. The origin check stops other websites from calling it from a browser, but it is **not user authentication**; a direct HTTP client can spoof an `Origin` header. Use a dedicated DeepSeek key with a spending limit and treat the proxy URL as semi-public. The key itself remains secret. For stronger access control, put Cloudflare Access or your own authentication in front of the Worker.
 - The proxy URL is not sensitive, but it is also not a password. Do not put the DeepSeek key in the proxy URL.
 
@@ -188,7 +188,7 @@ Create a long random token and add it as the `PDF_API_TOKEN` repository secret. 
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Add the output as a GitHub Actions secret, then re-run **Deploy DeepSeek secure proxy**. Check `GET /health` on the Worker; it reports whether the token, KV binding, Browser Rendering, and stored master are configured.
+Add the output as a GitHub Actions secret, then re-run **Deploy DeepSeek secure proxy**. Check `GET /health` on the Worker; it reports whether the token, KV binding, Browser Rendering, stored master, URL fetching (`fetchJd`), and history are configured.
 
 To add the secret: open the repository on GitHub → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**, name it `PDF_API_TOKEN`, and paste the generated value. Then open **Actions** → **Deploy DeepSeek secure proxy** → **Run workflow**.
 
@@ -227,6 +227,44 @@ Invoke-WebRequest -Method Post `
 
 `ai: false` uses deterministic local tailoring. `ai: true` uses the existing secure DeepSeek proxy. `filename` is optional; if omitted, the Worker uses `Naveen_Morla_Resume_<Company>_<date>.pdf`. A requested filename keeps its spaces, drops unsafe characters, and always ends in `.pdf`. The PDF comes from the same live preview, so it keeps the two-page layout, clickable project links, and the “Private project” label.
 
+When KV is available, the response also includes `X-Resume-File-Url`, a temporary link to the PDF that expires after 60 minutes.
+
+#### Use a job posting URL instead of pasted text
+
+Send `jobUrl` instead of `jobDescription` (at least one is required). `jobTitle` and `company` are optional and improve the search fallback:
+
+```powershell
+$body = @{
+  jobUrl = 'https://example.com/jobs/senior-data-engineer'
+  company = 'Acme'
+  jobTitle = 'Senior Data Engineer'
+  ai = $false
+} | ConvertTo-Json
+
+Invoke-WebRequest -Method Post `
+  -Uri 'https://resume-deepseek-proxy.morla-naveen1901.workers.dev/tailor.pdf' `
+  -Headers @{ Authorization = "Bearer $token" } `
+  -ContentType 'application/json' `
+  -Body $body `
+  -OutFile 'Naveen_Morla_Acme_Data_Engineer.pdf'
+```
+
+The Worker reads the page with DeepSeek Fetch (`/v1/tools/fetch`). If the page returns too little readable text, it searches for the role (`/v1/tools/search`) with content enabled, ranks results by relevance and the original host, and tries the best pages. A pasted `jobDescription` is always used directly; `jobUrl` is only a fallback when the description is missing or short.
+
+To inspect what the Worker read before generating a PDF, call the authenticated fetch endpoint:
+
+```powershell
+Invoke-RestMethod -Method Post `
+  -Uri 'https://resume-deepseek-proxy.morla-naveen1901.workers.dev/fetch-jd' `
+  -Headers @{ Authorization = "Bearer $token" } `
+  -ContentType 'application/json' `
+  -Body (@{ url = 'https://example.com/jobs/senior-data-engineer'; company = 'Acme'; jobTitle = 'Senior Data Engineer' } | ConvertTo-Json)
+```
+
+It returns `{ ok, title, url, source, chars, text }`, where `source` is `fetch`, `search-content`, `search+fetch`, `search-summary`, or `fetch-short`.
+
+DeepSeek Search and Fetch use the same `DEEPSEEK_API_KEY` and are billed at $0.75 per 1,000 successful requests each. Normal model charges apply only when `ai: true`; `ai: false` makes no chat-completion call.
+
 The endpoint uses Cloudflare Browser Rendering. The Workers Free plan includes 10 browser-minutes per day; Workers Paid removes that cap. The master resume stays in Cloudflare KV and is never committed to the repository.
 
 ### 4. Use from Claude with MCP (recommended for chat)
@@ -245,14 +283,22 @@ If a `Resume Studio` connector already exists with `Sign-in expired`, remove it 
 
 The server exposes two tools:
 
-- `tailor_resume` — accepts `jobDescription`, optional `company`, optional `ai`, and optional `filename`; returns a download link that expires after 60 minutes.
-- `resume_service_status` — reports whether the stored master, KV, Browser Rendering, and DeepSeek are configured.
+- `tailor_resume` — accepts `jobDescription` or `jobUrl` (at least one is required), plus optional `jobTitle`, `company`, `ai`, and `filename`; returns a download link that expires after 60 minutes.
+- `resume_service_status` — reports whether the stored master, KV, Browser Rendering, DeepSeek, URL fetching, and history are configured.
+
+`jobUrl` is useful when a chat only has the link. The Worker reads the posting with DeepSeek Fetch and falls back to Search. Pass the full description when it is available; the URL path costs extra Search/Fetch requests and is slower.
 
 Example prompts:
 
 ```text
 Tailor my resume to this job description and save it as
 Naveen_Morla_Stripe_Data_Engineer.pdf: <paste the JD>
+```
+
+```text
+Tailor my resume to this job posting and name the file
+Naveen_Morla_OpenAI_ML_Engineer.pdf:
+https://example.com/jobs/12345
 ```
 
 ```text
@@ -271,6 +317,19 @@ curl -X POST https://resume-deepseek-proxy.morla-naveen1901.workers.dev/tailor.p
 ```
 
 Do not ask Claude to open the website and operate it. That path requires many browser steps, consumes far more tokens, and cannot reliably return a downloadable file.
+
+### 5. Review previous cloud calls
+
+Open **https://naveenmorla1901.github.io/resume_customizer/history.html**, enter `PDF_API_TOKEN`, and select **Load history**. The token is kept in `sessionStorage` for that tab only. The page shows each cloud call newest first with its timestamp, filename, company/role, mode, ATS score, selected projects, and a temporary PDF link. It also summarizes the latest score and the change from the previous scored call.
+
+The page reads the authenticated endpoint:
+
+```http
+GET /history
+Authorization: Bearer <PDF_API_TOKEN>
+```
+
+It returns JSON metadata only, not the resume or job-description text. Entries are retained for 90 days and the endpoint returns up to 100 calls. History is best-effort: if a KV write fails, the PDF request still succeeds. The website's own **Print / PDF** and **Download DOCX** buttons are local exports and do not create history entries; only Worker PDF/MCP calls do.
 
 ## Two-page behavior
 
@@ -313,12 +372,14 @@ The Pages workflow only publishes `docs/`. It never receives the DeepSeek key. T
 ```text
 docs/
 ├── index.html              # App shell and modals
+├── history.html            # Cloud call history viewer
 ├── .nojekyll               # GitHub Pages: skip Jekyll
 ├── css/styles.css          # UI, resume paper, print styles
 ├── fonts/                  # Carlito (Calibri-metric) webfonts
 ├── favicon.svg
 └── js/
     ├── app.js              # UI controller
+    ├── history.js          # `/history` viewer; token in sessionStorage
     ├── ai.js               # DeepSeek client, prompt, plan validation
     ├── ats.js              # JD extraction and ATS scoring
     ├── tailor.js           # Local selection, plan materialization, text export
@@ -351,8 +412,8 @@ master/
 - When AI is enabled, the request contains the job description and the resume with phone, email, and link URLs removed; the name and link labels remain.
 - In **direct mode**, the API key is memory-only and is sent only to the configured endpoint as a bearer token. It is never stored in `localStorage` and is not prefilled after a reload.
 - In **secure proxy mode**, the browser sends the request to the Cloudflare Worker without the DeepSeek key. The Worker adds the key and forwards the request. The key is stored as a GitHub Actions secret and a Cloudflare Worker secret, never in `docs/` or browser storage. The proxy URL is saved in `localStorage`.
-- Loading a job URL sends that URL to Jina Reader (`r.jina.ai`), with a public read-only proxy (`allorigins.win`) and a direct fetch as fallbacks. Only the extracted job text is saved locally.
-- There is no account, cookie, or analytics. The optional Worker is stateless and stores no resume data.
+- Loading a job URL in the static app sends that URL to Jina Reader (`r.jina.ai`), with a public read-only proxy (`allorigins.win`) and a direct fetch as fallbacks. Only the extracted job text is saved locally. Cloud PDF/MCP calls with `jobUrl` send the URL to DeepSeek Fetch/Search instead.
+- There is no account, cookie, or analytics. The optional Worker stores the private master in Workers KV, keeps temporary PDFs for 60 minutes, and keeps a 90-day history record containing the filename, company/role, ATS score, selected project names, mode, and temporary file ID. It does not retain job-description text.
 - The public repository contains a starter resume. Do not commit a private master resume or an API key.
 
 ## Legacy FastAPI app
