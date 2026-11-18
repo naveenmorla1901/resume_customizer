@@ -214,6 +214,12 @@ textarea::placeholder, input::placeholder { color: #98a2b3; }
   letter-spacing: .04em; text-transform: uppercase;
 }
 .cloud-reader-state.on { color: var(--good); }
+.cloud-reader-meta { display: inline-flex; align-items: center; gap: 7px; }
+.cloud-reader-chevron {
+  width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg) translateY(-1px); transition: transform .15s ease;
+}
+.cloud-reader[open] .cloud-reader-chevron { transform: rotate(225deg) translateY(-1px); }
 .cloud-reader-body { display: grid; gap: 6px; padding: 0 11px 11px; }
 .cloud-reader-label { color: var(--ink); font-size: 11.5px; font-weight: 600; }
 .cloud-reader-input { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
