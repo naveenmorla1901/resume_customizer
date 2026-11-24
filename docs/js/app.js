@@ -50,6 +50,7 @@ import {
   addJdKeywords,
   buildLocalPlan,
   defaultProjects,
+  mirrorJobTitle,
   materializePlan,
   planStats,
 } from './tailor.js';
@@ -96,11 +97,12 @@ function workerEndpoint() {
 }
 
 function updateCloudReaderState() {
-  const token = ($('jd-token')?.value || '').trim();
+  // The deployed site is an allowed Worker origin, so the cloud reader is
+  // always on; a token is only an override for other hosts.
   const node = $('cloud-reader-state');
   if (!node) return;
-  node.textContent = token ? 'On' : 'Off';
-  node.classList.toggle('on', Boolean(token));
+  node.textContent = 'On';
+  node.classList.add('on');
 }
 
 /* ------------------------------------------------------------------ */
@@ -595,6 +597,7 @@ function syncSettingsUi() {
   }
   $('setting-rewrite').checked = settings.rewriteBullets !== false;
   $('setting-add-keywords').checked = settings.addJdKeywords !== false;
+  $('setting-mirror-title').checked = settings.mirrorJobTitle !== false;
   $('ai-toggle').checked = Boolean(settings.useAI);
   updateAiHint();
   updateMasterCard();
@@ -652,6 +655,7 @@ function saveSettingsFromForm() {
     useAI: $('ai-toggle').checked,
     rewriteBullets: $('setting-rewrite').checked,
     addJdKeywords: $('setting-add-keywords').checked,
+    mirrorJobTitle: $('setting-mirror-title').checked,
   };
   saveSettings(state.settings);
   $('setting-key').value = '';
@@ -787,10 +791,6 @@ async function loadJdFromUrl(value, opts = {}) {
       toast('Stopped reading the job URL.', '');
     } else {
       toast(error.message || 'Could not read that job URL. Paste the description instead.', 'error');
-      if (!token) {
-        $('cloud-reader')?.setAttribute('open', '');
-        updateLoadingTextNow('Tip: add the Worker token under Cloud reader to try DeepSeek Fetch/Search, or paste the description.');
-      }
     }
     return '';
   } finally {
@@ -904,6 +904,9 @@ async function tailorResume() {
       nextPlan = buildLocalPlan(state.master, jd, baseReport);
     }
 
+    if (state.settings.mirrorJobTitle !== false) {
+      nextPlan = mirrorJobTitle(nextPlan, state.master, jd);
+    }
     if (state.settings.addJdKeywords !== false) {
       nextPlan = addJdKeywords(nextPlan, state.master, jd);
     }

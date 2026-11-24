@@ -225,7 +225,7 @@ export function buildResumeDocx(docx, master, tailored, opts = {}) {
       docx,
       [
         new TextRun({
-          text: `${masterRole.title}, ${masterRole.company}`,
+          text: `${role.title || masterRole.title}, ${masterRole.company}`,
           bold: true,
           size: 20,
           font: FONT,

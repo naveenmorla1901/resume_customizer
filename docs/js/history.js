@@ -87,7 +87,7 @@ function setBusy(busy) {
   $('btn-history-clear-token').disabled = busy;
   $('btn-clear-local-runs').disabled = busy;
   $('history-token').setAttribute('aria-busy', busy ? 'true' : 'false');
-  $('btn-history-load').textContent = busy ? 'Loading…' : 'Load history';
+  $('btn-history-load').textContent = busy ? 'Loading…' : 'Reload history';
 }
 
 function localRuns() {
@@ -219,31 +219,20 @@ async function loadHistory() {
   if (typed) saveWorkerToken(typed);
 
   const local = localRuns();
-  if (!token) {
-    render(local);
-    setStatus(local.length ? 'Local runs only' : 'No runs yet');
-    showMessage(
-      local.length
-        ? 'Showing runs from this browser. Enter the Worker token once to include MCP and cloud history; it will be remembered on this device.'
-        : 'Tailor a resume in the studio to create a local run, or enter the Worker token once to load MCP and cloud history.',
-      '',
-    );
-    return;
-  }
-
   setBusy(true);
   setStatus('Loading…');
   showMessage('');
 
   try {
+    // The deployed site is an allowed Worker origin, so the token is optional.
     const response = await fetch(`${apiBase()}/history`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
       cache: 'no-store',
     });
     const data = await response.json().catch(() => null);
     if (!response.ok) {
       if (response.status === 401) {
-        throw new Error('Token rejected. Use the PDF_API_TOKEN configured on the Worker.');
+        throw new Error('The Worker did not accept this page. Make sure this site is in the Worker\'s allowed origins.');
       }
       throw new Error(data?.error?.message || `The Worker returned HTTP ${response.status}.`);
     }

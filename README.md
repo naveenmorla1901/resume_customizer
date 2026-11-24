@@ -11,7 +11,8 @@ The app is plain HTML, CSS, and JavaScript in [`docs/`](docs/) and is deployed w
 ## What it does
 
 - **Keeps the resume's design.** Exports a DOCX that matches the original Word layout: Letter paper, the same margins, Calibri/Carlito typography, navy section headings, right-aligned dates, and the same section order.
-- **Reads a job posting URL.** Paste a link instead of the description and the app replaces it with the extracted text. With a Worker token in **DeepSeek cloud reader**, the app uses DeepSeek Fetch and Search first; without a token it keeps the zero-setup Jina Reader path with public-reader and direct-fetch fallbacks. Cloud PDF and MCP calls can also pass `jobUrl`.
+- **Reads a job posting URL.** Paste a link instead of the description and the app replaces it with the extracted text. It uses DeepSeek Fetch and Search first (no token needed on the deployed site), then the Jina Reader path with public-reader and direct-fetch fallbacks. Cloud PDF and MCP calls can also pass `jobUrl`.
+- **Mirrors the job title (on by default).** The JD's role title, such as *Machine Learning Engineer*, becomes the summary's opening phrase and the latest role's title; the company and dates do not change. Turn it off under **Settings**.
 - **Emphasizes the latest role.** Lisinski Law Firm leads the experience section, with its most JD-relevant bullets first and its full bullet set kept whenever the two-page budget allows. JD wording is added only where that role already supports the same fact.
 - **Bolds the skills that matter.** Existing bold is preserved. Up to three JD-relevant terms per experience bullet are bolded in the preview, PDF, and DOCX, so a recruiter can scan the important tools without the font or layout changing.
 - **Prioritizes relevant tools.** Existing skills are regrouped and filtered so JD-relevant tools lead; unrelated tools are removed rather than added.
@@ -306,7 +307,7 @@ https://example.com/jobs/12345
 ```
 
 ```text
-Use tailor_resume with ai=true for this role. Name the file
+Use tailor_resume with ai=false for a fast local version. Name the file
 Naveen_Morla_OpenAI_ML_Engineer.pdf.
 ```
 
@@ -322,15 +323,17 @@ curl -X POST https://resume-deepseek-proxy.morla-naveen1901.workers.dev/tailor.p
 
 Do not ask Claude to open the website and operate it. That path requires many browser steps, consumes far more tokens, and cannot reliably return a downloadable file.
 
-### 5. Use the DeepSeek reader on the website (optional)
+### 5. Use the DeepSeek reader on the website
 
-Open the app, expand **DeepSeek cloud reader** under the URL box, and paste `PDF_API_TOKEN`. The token is saved on this device after the first entry and is shared with the History page and the MCP connector, so you do not paste it on every visit. **Load URL** now calls `/fetch-jd` first, so thin or JavaScript-heavy pages get DeepSeek Fetch plus the Search fallback.
+The DeepSeek cloud reader is always on for the deployed site; no token is needed. `/fetch-jd` and `/history` accept browser requests from an allowed origin (`ALLOWED_ORIGINS`), the same trust the DeepSeek proxy route uses, and still require `PDF_API_TOKEN` for calls without an `Origin` header (scripts, curl, MCP clients). **Load URL** calls `/fetch-jd` first, so thin or JavaScript-heavy pages get DeepSeek Fetch plus the Search fallback, then falls back to Jina Reader, the public reader, and a direct fetch.
 
-Leave the token blank to keep the zero-setup path: Jina Reader, then the public reader, then a direct fetch. If the public readers cannot read a page, the token panel opens with a hint. The token is never written to the URL. Use **Clear** on a shared computer to remove it from `localStorage`; private browsing may keep it only for the current tab.
+The token field under **DeepSeek cloud reader** is only needed when running the app from a host that is not an allowed origin.
+
+DeepSeek tailoring is also on by default: every page load uses the secure proxy (the key stays in the Worker secret) with the DeepSeek toggle switched on. MCP `tailor_resume` and `POST /tailor.pdf` use DeepSeek unless `ai` is `false`.
 
 ### 6. Review previous cloud calls
 
-Open **https://naveenmorla1901.github.io/resume_customizer/history.html**. The page loads automatically: runs tailored in this browser come from `localStorage`, and MCP/cloud PDF calls come from the Worker. If you have not entered `PDF_API_TOKEN` on this device, enter it once and select **Load history**; it is then saved on this device and shared with the **DeepSeek cloud reader** on the main page. The page shows each run newest first with its timestamp, source badge (This browser, MCP, or Cloud API), filename, company/role, mode, ATS score, selected projects, and a temporary PDF link for cloud runs. It also summarizes the latest score and the change from the previous scored call.
+Open **https://naveenmorla1901.github.io/resume_customizer/history.html**. The page loads automatically with no token: runs tailored in this browser come from `localStorage`, and MCP/cloud PDF calls come from the Worker. The page shows each run newest first with its timestamp, source badge (This browser, MCP, or Cloud API), filename, company/role, mode, ATS score, selected projects, and a temporary PDF link for cloud runs. It also summarizes the latest score and the change from the previous scored call.
 
 The page reads the authenticated endpoint:
 
@@ -425,7 +428,7 @@ master/
 - When AI is enabled, the request contains the job description and the resume with phone, email, and link URLs removed; the name and link labels remain.
 - In **direct mode**, the API key is memory-only and is sent only to the configured endpoint as a bearer token. It is never stored in `localStorage` and is not prefilled after a reload.
 - In **secure proxy mode**, the browser sends the request to the Cloudflare Worker without the DeepSeek key. The Worker adds the key and forwards the request. The key is stored as a GitHub Actions secret and a Cloudflare Worker secret, never in `docs/` or browser storage. The proxy URL is saved in `localStorage`.
-- Loading a job URL in the static app sends that URL to the selected reader. When the Worker token is entered under **DeepSeek cloud reader**, the URL goes to your Cloudflare Worker and then to DeepSeek Fetch/Search. Without a token, the app uses Jina Reader (`r.jina.ai`), with a public read-only proxy (`allorigins.win`) and a direct fetch as fallbacks. Only the extracted job text is saved locally. Cloud PDF/MCP calls with `jobUrl` use the same DeepSeek path. The Worker token is saved in `localStorage` and sent only to the configured Worker.
+- Loading a job URL in the static app sends that URL to the selected reader. The URL goes to your Cloudflare Worker and then to DeepSeek Fetch/Search. If that fails, the app uses Jina Reader (`r.jina.ai`), with a public read-only proxy (`allorigins.win`) and a direct fetch as fallbacks. Only the extracted job text is saved locally. Cloud PDF/MCP calls with `jobUrl` use the same DeepSeek path. The Worker token is saved in `localStorage` and sent only to the configured Worker.
 - There is no account, cookie, or analytics. The optional Worker stores the private master in Workers KV, keeps temporary PDFs for 60 minutes, and keeps a 90-day history record containing the filename, company/role, ATS score, selected project names, source, mode, and temporary file ID. It does not retain job-description text. Browser tailoring runs are kept as metadata in `localStorage` and can be cleared from the History page or by clearing site data.
 - The public repository contains a starter resume. Do not commit a private master resume or an API key.
 

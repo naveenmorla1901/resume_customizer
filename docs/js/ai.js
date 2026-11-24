@@ -1,6 +1,7 @@
 import { TAXONOMY } from './taxonomy.js';
 import { countTerm, resumeToText } from './ats.js';
 import { emphasizePlan } from './emphasis.js';
+import { DEFAULT_WORKER_ENDPOINT } from './jd-import.js';
 import { normalizeText, unique } from './util.js';
 import { alignEvidenceRoles, buildLocalSummary, defaultProjects, ensureExperimentationSkill, normalizePlan, shrinkSummary } from './tailor.js';
 
@@ -9,9 +10,10 @@ export const DEFAULT_AI_SETTINGS = {
   model: 'deepseek-flash',
   endpoint: 'https://api.deepseek.com/chat/completions',
   // "direct" keeps the key in memory for this tab. "proxy" calls the
-  // server-side worker and never puts the DeepSeek key in the browser.
-  connectionMode: 'direct',
-  proxyUrl: '',
+  // server-side worker and never puts the DeepSeek key in the browser; it is
+  // the default so DeepSeek works on every visit without pasting a key.
+  connectionMode: 'proxy',
+  proxyUrl: DEFAULT_WORKER_ENDPOINT,
   useAI: true,
   // Allows JD-aligned wording for the summary and the latest role only.
   // Facts, metrics, and tools are still validated against the master resume.
@@ -19,6 +21,8 @@ export const DEFAULT_AI_SETTINGS = {
   // Applied after selection (local or DeepSeek): add the JD's missing
   // keywords to Skills and the summary, even when the master lacks them.
   addJdKeywords: true,
+  // Use the JD's role title as the summary opening and latest role title.
+  mirrorJobTitle: true,
 };
 
 export class AiError extends Error {

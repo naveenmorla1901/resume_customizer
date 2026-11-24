@@ -1,8 +1,8 @@
 import { TAXONOMY, CORE_SKILL_NAMES } from './taxonomy.js';
-import { analyzeJd, buildAtsReport, countTerm, resumeToText } from './ats.js';
+import { analyzeJd, buildAtsReport, countTerm, extractUnknownTerms, resumeToText } from './ats.js';
 import { focusSentence, focusTermsFromJd } from './domain-focus.js';
 import { emphasizePlan } from './emphasis.js';
-import { joinNatural, normalizeText, unique } from './util.js';
+import { compactTitle, joinNatural, normalizeText, unique } from './util.js';
 
 const TERM_BY_NAME = new Map(TAXONOMY.map((t) => [t.name.toLowerCase(), t]));
 
@@ -609,6 +609,56 @@ export function buildLocalPlan(master, jd, report = null) {
   }, analysis);
 }
 
+const ROLE_NOUN_RE = /\b(?:engineer|scientist|analyst|developer|architect|manager|specialist|consultant|lead|operator|technician|administrator|researcher|director|coordinator|strategist|statistician|programmer)s?\b/i;
+
+/** The JD's role title, compacted, or '' when it does not look like a role. */
+export function targetRoleTitle(jd = '') {
+  const title = compactTitle(analyzeJd(jd).title || '', { maxWords: 7, maxChars: 60 });
+  return ROLE_NOUN_RE.test(title) ? title : '';
+}
+
+/**
+ * Use the job's own title as the summary's opening phrase and as the latest
+ * role's title. Recruiters and ATS title filters key on this phrase. Opt-out
+ * in Settings; the company and dates are never changed.
+ */
+export function mirrorJobTitle(plan, master, jd) {
+  const title = targetRoleTitle(jd);
+  const latest = (master.experience || [])[0];
+  if (!title || !latest) return plan;
+
+  let summary = normalizeText(plan.summary || '');
+  // The opening phrase may contain a comma or slash ("Data Scientist,
+  // Business Intelligence with …") but never a sentence end or a number.
+  const opening = /^([^.\d]{2,80}?)\s+with\s+/i;
+  summary = opening.test(summary) ? summary.replace(opening, `${title} with `) : `${title}: ${summary}`;
+  // The opening phrase now names the role, so the "Targeting … roles"
+  // sentence would only repeat it.
+  summary = summary
+    .replace(/\bTargeting (?:this role|.+? roles), with transferable evidence in /, 'Core strengths include ')
+    .replace(/\s*\bTargeting (?:this role|.+? roles)\.\s*/, ' ')
+    .trim();
+
+  const experience = (plan.experience || []).map((role) => (
+    role.id === latest.id ? { ...role, title } : role
+  ));
+  const notes = [...(plan.notes || [])];
+  if (normalizeText(latest.title).toLowerCase() !== title.toLowerCase()) {
+    notes.push(`Used the job title "${title}" in the summary and as the latest role title (was "${latest.title}").`);
+  }
+  return { ...plan, summary, experience, notes };
+}
+
+// Tool-like JD terms outside the taxonomy: short, every word capitalized
+// ("ServiceNow", "Google Sheets"), so phrases like "Monitor power" are skipped.
+function toolLikeTerms(jd, resumeText) {
+  return extractUnknownTerms(jd, resumeText)
+    .filter((term) => {
+      const words = term.split(/\s+/).filter(Boolean);
+      return words.length <= 3 && words.every((word) => /^[A-Z0-9]/.test(word));
+    });
+}
+
 const MAX_ADDED_KEYWORDS = 14;
 const MAX_SUMMARY_KEYWORDS = 5;
 const ADDITIONAL_GROUP = 'Additional Skills';
@@ -635,8 +685,15 @@ export function addJdKeywords(plan, master, jd) {
   const resumeText = String(report.resumeText || '').toLowerCase();
   const missing = (report.missing || []).filter((keyword) => keyword.score !== false);
   const missingNames = new Set(missing.map((keyword) => keyword.name.toLowerCase()));
-  const focusTerms = focusTermsFromJd(jd, report.unsupportedFocus || [])
-    .filter((term) => !missingNames.has(term.toLowerCase()) && !resumeText.includes(term.toLowerCase()));
+  const genericTerms = new Set(focusTermsFromJd(jd, report.unsupportedFocus || []));
+  const focusTerms = unique([
+    ...genericTerms,
+    ...toolLikeTerms(jd, report.resumeText),
+  ]).filter((term, index, all) => (
+    !missingNames.has(term.toLowerCase())
+    && !resumeText.includes(term.toLowerCase())
+    && all.findIndex((other) => other.toLowerCase() === term.toLowerCase()) === index
+  ));
   if (!missing.length && !focusTerms.length) return plan;
 
   const matchedTerms = (report.matched || [])
@@ -691,7 +748,7 @@ export function addJdKeywords(plan, master, jd) {
   ]).filter((name) => added.includes(name)).slice(0, MAX_SUMMARY_KEYWORDS)
     // Tool names keep their casing; generic JD phrases such as "Cooling" read
     // better in lower case inside a sentence. Acronyms stay upper case.
-    .map((name) => (focusTerms.includes(name) && name !== name.toUpperCase() ? name.toLowerCase() : name));
+    .map((name) => (genericTerms.has(name) && name !== name.toUpperCase() ? name.toLowerCase() : name));
   const summary = summaryTerms.length
     ? insertAfterTargetSentence(plan.summary, `Working knowledge of ${joinNatural(summaryTerms)}.`)
     : plan.summary;
@@ -716,7 +773,12 @@ export function normalizePlan(plan = {}, master = {}) {
   experience = roles.map((role) => {
     const incoming = experience.find((r) => r.id === role.id) || {};
     const bullets = Array.isArray(incoming.bullets) ? incoming.bullets.filter((b) => typeof b === 'string' && b.trim()) : role.bullets || [];
-    return { id: role.id, bullets: bullets.length ? bullets : role.bullets || [] };
+    const title = typeof incoming.title === 'string' ? normalizeText(incoming.title) : '';
+    return {
+      id: role.id,
+      bullets: bullets.length ? bullets : role.bullets || [],
+      ...(title ? { title } : {}),
+    };
   });
 
   let projectsPlan = Array.isArray(plan.projects) ? plan.projects : [];
@@ -781,6 +843,7 @@ export function materializePlan(master, plan) {
       const selected = safe.experience.find((r) => r.id === role.id);
       return {
         ...role,
+        ...(selected?.title ? { title: selected.title } : {}),
         bullets: selected?.bullets?.length ? selected.bullets : (role.bullets || []),
       };
     }),

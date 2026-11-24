@@ -80,12 +80,18 @@ export function loadSettings() {
   const saved = read(KEYS.settings, {}) || {};
   // Migrate away from the old behaviour that persisted the key. Remove it
   // from localStorage as soon as the app loads.
-  if (Object.prototype.hasOwnProperty.call(saved, 'apiKey')) {
-    const { apiKey, ...safe } = saved;
-    write(KEYS.settings, safe);
-    return { ...DEFAULT_AI_SETTINGS, ...safe, apiKey: '' };
-  }
-  return { ...DEFAULT_AI_SETTINGS, ...saved, apiKey: '' };
+  const { apiKey, ...safe } = saved;
+  if (Object.prototype.hasOwnProperty.call(saved, 'apiKey')) write(KEYS.settings, safe);
+  // A direct-mode key never survives a reload, so a fresh page load always
+  // uses the secure proxy, and DeepSeek starts switched on every visit.
+  return {
+    ...DEFAULT_AI_SETTINGS,
+    ...safe,
+    connectionMode: 'proxy',
+    proxyUrl: safe.proxyUrl || DEFAULT_AI_SETTINGS.proxyUrl,
+    useAI: true,
+    apiKey: '',
+  };
 }
 
 export function saveSettings(settings) {

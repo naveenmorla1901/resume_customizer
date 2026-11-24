@@ -121,6 +121,17 @@ function apiError(message, status = 400) {
   return apiJson({ error: { message } }, status);
 }
 
+/**
+ * Browser calls from an allowed origin use the same trust as the DeepSeek
+ * proxy route, so the studio and History page work without a token. Calls
+ * without an Origin header (scripts, curl, MCP clients) still need the
+ * bearer token.
+ */
+function authorizedForBrowserRoute(request, env, origin, allowed) {
+  if (origin && allowed.includes(origin)) return { ok: true };
+  return authorized(request, env);
+}
+
 function authorized(request, env) {
   const expected = String(env?.PDF_API_TOKEN || '');
   if (!expected) {
@@ -808,20 +819,21 @@ function createResumeMcpServer(env, baseUrl) {
       'Pass the full job description when available; jobUrl is a fallback for thin or unavailable text.',
       'The resume is built from Naveen Morla\'s stored master resume and keeps the existing two-page layout, fonts, and clickable project links.',
       'Pass filename when the user asks for a specific output filename; the .pdf extension is added automatically.',
-      'Set ai=true only when the user explicitly wants DeepSeek rewording; otherwise leave it false for fast, deterministic tailoring.',
+      'DeepSeek tailoring is on by default; pass ai=false only when the user asks for fast, deterministic local tailoring.',
     ].join(' '),
     inputSchema: z.object({
       jobDescription: z.string().max(MAX_JD_CHARS).optional().describe('The complete job description text, not just the job title. Provide this or jobUrl.'),
       jobUrl: z.string().max(MAX_FETCH_URL_CHARS).optional().describe('Job posting URL. When the description is missing or short, the Worker reads it with DeepSeek Fetch and falls back to Search.'),
       jobTitle: z.string().max(120).optional().describe('Job title, used to improve the URL fallback search and the history entry.'),
       company: z.string().max(80).optional().describe('Company name used in the default filename and history.'),
-      ai: z.boolean().optional().describe('true = DeepSeek rewrites the summary and latest role; false or omitted = deterministic local tailoring (default).'),
+      ai: z.boolean().optional().describe('true or omitted = DeepSeek tailoring (default); false = deterministic local tailoring.'),
       filename: z.string().max(140).optional().describe('Exact output filename requested by the user, for example "Naveen_Morla_Acme_Data_Engineer.pdf".'),
     }),
   }, async ({ jobDescription, jobUrl, jobTitle, company, ai, filename }) => {
     const safeCompany = String(company || '').trim().slice(0, 80);
     const safeTitle = String(jobTitle || '').trim().slice(0, 120);
     const name = pdfFilename(safeCompany, filename);
+    const useAi = ai !== false && Boolean(env.DEEPSEEK_API_KEY);
     try {
       const master = await loadStoredMaster(env);
       if (!master) {
@@ -843,13 +855,13 @@ function createResumeMcpServer(env, baseUrl) {
         company: safeCompany,
         jobTitle: safeTitle,
       });
-      const { pdf, meta } = await generatePdf(env, { master, jd, ai: ai === true });
+      const { pdf, meta } = await generatePdf(env, { master, jd, ai: useAi });
       const id = await storePdf(env, pdf, name);
       const url = id ? `${baseUrl}${FILE_ROUTE_PREFIX}${id}` : null;
       await recordHistory(env, {
         status: 'ok',
         source: 'mcp',
-        ai: ai === true,
+        ai: useAi,
         filename: name,
         company: safeCompany,
         role: meta.role || safeTitle,
@@ -859,7 +871,7 @@ function createResumeMcpServer(env, baseUrl) {
         fileId: id,
         jobSource: source?.url || '',
       });
-      const mode = ai === true ? 'DeepSeek AI rewrite' : 'deterministic local tailoring';
+      const mode = useAi ? 'DeepSeek AI rewrite' : 'deterministic local tailoring';
       const lines = [
         `Resume PDF generated with ${mode}.`,
         source ? `Job description read from ${source.url}.` : '',
@@ -884,7 +896,7 @@ function createResumeMcpServer(env, baseUrl) {
       await recordHistory(env, {
         status: 'error',
         source: 'mcp',
-        ai: ai === true,
+        ai: useAi,
         filename: name,
         company: safeCompany,
         role: safeTitle,
@@ -974,12 +986,12 @@ async function handleTailorPdf(request, env) {
   if (parsed.error) return apiError(parsed.error, parsed.status);
 
   const body = parsed.body;
-  const ai = body.ai === true;
+  const ai = body.ai !== false && Boolean(env.DEEPSEEK_API_KEY);
   const company = String(body.company || '').trim().slice(0, 80);
   const jobTitle = String(body.jobTitle || '').trim().slice(0, 120);
   const filename = pdfFilename(company, body.filename);
 
-  if (ai && !env.DEEPSEEK_API_KEY) {
+  if (body.ai === true && !env.DEEPSEEK_API_KEY) {
     return apiError('ai was requested but DEEPSEEK_API_KEY is not configured.', 400);
   }
 
@@ -1054,7 +1066,7 @@ async function handleFetchJd(request, env) {
     return new Response(null, { status: 204, headers: fetchJdCorsHeaders(origin) });
   }
 
-  const auth = authorized(request, env);
+  const auth = authorizedForBrowserRoute(request, env, origin, allowed);
   if (!auth.ok) return fetchJdJson({ error: { message: auth.message } }, auth.status, origin);
   if (request.method !== 'POST') {
     return fetchJdJson({ error: { message: 'Method not allowed. Use POST.' } }, 405, origin);
@@ -1098,7 +1110,7 @@ async function handleHistory(request, env) {
     return new Response(null, { status: 204, headers: historyCorsHeaders(origin) });
   }
 
-  const auth = authorized(request, env);
+  const auth = authorizedForBrowserRoute(request, env, origin, allowed);
   if (!auth.ok) return historyJson({ error: { message: auth.message } }, auth.status, origin);
   if (request.method !== 'GET') {
     return historyJson({ error: { message: 'Method not allowed. Use GET.' } }, 405, origin);

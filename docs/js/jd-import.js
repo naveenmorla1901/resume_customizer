@@ -2,8 +2,9 @@
  * Read a job description from a pasted URL.
  *
  * Two readers are available:
- *   1. DeepSeek through the Worker (`/fetch-jd`) when the user supplies the
- *      Worker token. This supports JS-heavy pages and a Search fallback.
+ *   1. DeepSeek through the Worker (`/fetch-jd`). The deployed site is an
+ *      allowed origin, so no token is needed there. This supports JS-heavy
+ *      pages and a Search fallback.
  *   2. Jina Reader with public-proxy and direct-fetch fallbacks, which needs
  *      no token and keeps the app usable out of the box.
  * The extracted text is what gets saved; the URL never replaces the JD.
@@ -202,12 +203,12 @@ function cloudWarning(error) {
 
 async function fetchWithCloudReader(url, { token, endpoint, signal }) {
   const base = normalizeEndpoint(endpoint) || DEFAULT_WORKER_ENDPOINT;
+  const headers = { 'Content-Type': 'application/json' };
+  // The deployed site is an allowed origin, so the token is optional there.
+  if (token) headers.Authorization = `Bearer ${token}`;
   const data = await fetchJson(`${base}/fetch-jd`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
     body: JSON.stringify({ url }),
     signal,
     timeout: 60000,
@@ -239,13 +240,11 @@ export async function fetchJobDescription(value, options = {}) {
 
   const token = String(options.token || '').trim();
   let cloudError = null;
-  if (token) {
-    try {
-      return await fetchWithCloudReader(url, { ...options, token });
-    } catch (error) {
-      if (error.name === 'AbortError') throw error;
-      cloudError = error;
-    }
+  try {
+    return await fetchWithCloudReader(url, { ...options, token });
+  } catch (error) {
+    if (error.name === 'AbortError') throw error;
+    cloudError = error;
   }
 
   const attempts = [

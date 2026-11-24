@@ -41,17 +41,17 @@
         </div>
         <p class="helper">
           Runs you tailor in this browser are listed here, alongside each PDF created by the MCP tool or
-          <code>POST /tailor.pdf</code> and recorded on the Worker for 90 days. The Worker token is saved on this
-          device after the first entry, so the studio, this page, and the MCP connector use the same token.
+          <code>POST /tailor.pdf</code> and recorded on the Worker for 90 days. This page loads everything
+          automatically; no Worker token is needed.
         </p>
         <form class="history-token-form" id="history-token-form">
-          <div class="history-token-field">
+          <div class="history-token-field" hidden>
             <label class="eyebrow" for="history-token">Worker token</label>
             <input id="history-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="PDF_API_TOKEN">
           </div>
-          <button class="btn btn-primary btn-sm" id="btn-history-load" type="submit">Load history</button>
-          <button class="btn btn-ghost btn-sm" id="btn-history-refresh" type="button">Refresh</button>
-          <button class="btn btn-ghost btn-sm" id="btn-history-clear-token" type="button">Clear token</button>
+          <button class="btn btn-primary btn-sm" id="btn-history-load" type="submit">Reload history</button>
+          <button class="btn btn-ghost btn-sm" id="btn-history-refresh" type="button" hidden>Refresh</button>
+          <button class="btn btn-ghost btn-sm" id="btn-history-clear-token" type="button" hidden>Clear token</button>
         </form>
         <p class="mini-note history-message" id="history-message" role="status" aria-live="polite" hidden></p>
 
@@ -85,7 +85,7 @@
         </div>
         <div class="history-list" id="history-list"></div>
         <div class="history-empty" id="history-empty">
-          Tailor a resume in the studio, or enter the Worker token once to load MCP and cloud history.
+          Loading browser, MCP, and cloud history…
         </div>
       </section>
     </main>

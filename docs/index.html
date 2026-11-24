@@ -67,19 +67,19 @@
           <p class="mini-note jd-url-status" id="jd-url-status" hidden></p>
           <details class="cloud-reader" id="cloud-reader">
             <summary>
-              <span>DeepSeek cloud reader <span class="cloud-reader-tag">optional</span></span>
+              <span>DeepSeek cloud reader</span>
               <span class="cloud-reader-meta">
-                <span class="cloud-reader-state" id="cloud-reader-state">Off</span>
+                <span class="cloud-reader-state on" id="cloud-reader-state">On</span>
                 <span class="cloud-reader-chevron" aria-hidden="true"></span>
               </span>
             </summary>
             <div class="cloud-reader-body">
-              <label class="cloud-reader-label" for="jd-token">Worker token</label>
+              <p class="mini-note" id="cloud-reader-note">Always on for this site; no token needed. <strong>Load URL</strong> tries DeepSeek Fetch and Search first, then falls back to the public reader.</p>
+              <label class="cloud-reader-label" for="jd-token">Worker token (only needed when running the app from another host)</label>
               <div class="cloud-reader-input">
-                <input id="jd-token" type="password" autocomplete="off" spellcheck="false" placeholder="PDF_API_TOKEN" aria-describedby="cloud-reader-note">
+                <input id="jd-token" type="password" autocomplete="off" spellcheck="false" placeholder="Not needed on this site" aria-describedby="cloud-reader-note">
                 <button class="link-btn" id="btn-clear-jd-token" type="button">Clear</button>
               </div>
-              <p class="mini-note" id="cloud-reader-note">Saved on this device after the first entry. The same token is used by the History page and the MCP connector. When set, <strong>Load URL</strong> tries DeepSeek Fetch and Search first, then falls back to the public reader. Use <strong>Clear</strong> on a shared computer.</p>
             </div>
           </details>
           <textarea id="jd-input" rows="9" placeholder="Paste the full job post here, or paste a job posting URL and the app will read it. Include the title, requirements, and preferred qualifications."></textarea>
@@ -285,6 +285,7 @@
             <span class="api-status" id="api-status"></span>
           </div>
           <label class="check-line"><input id="setting-rewrite" type="checkbox"> Allow JD-aligned rewording of the summary and latest role (same facts only)</label>
+          <label class="check-line"><input id="setting-mirror-title" type="checkbox"> Use the job title (for example Machine Learning Engineer) as the summary's opening phrase and the latest role title</label>
           <label class="check-line"><input id="setting-add-keywords" type="checkbox"> Fill missing job keywords into Skills and the summary, even if they are not in my master resume</label>
           <p class="mini-note" id="api-note">DeepSeek's JSON mode is used. Thinking is disabled for speed and predictable output. DeepSeek only selects and rewords existing content; missing job keywords are added afterwards only when the option above is on, and every added term is listed in the change notes.</p>
         </section>
