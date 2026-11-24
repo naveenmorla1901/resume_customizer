@@ -575,6 +575,7 @@ async function recordHistory(env, record = {}) {
   const metadata = {
     at,
     status: record.status === 'error' ? 'error' : 'ok',
+    source: record.source || 'api',
     mode: record.ai ? 'ai' : 'local',
     filename: truncate(record.filename, 100),
     company: truncate(record.company, 60),
@@ -847,6 +848,7 @@ function createResumeMcpServer(env, baseUrl) {
       const url = id ? `${baseUrl}${FILE_ROUTE_PREFIX}${id}` : null;
       await recordHistory(env, {
         status: 'ok',
+        source: 'mcp',
         ai: ai === true,
         filename: name,
         company: safeCompany,
@@ -881,6 +883,7 @@ function createResumeMcpServer(env, baseUrl) {
     } catch (error) {
       await recordHistory(env, {
         status: 'error',
+        source: 'mcp',
         ai: ai === true,
         filename: name,
         company: safeCompany,
@@ -1003,6 +1006,7 @@ async function handleTailorPdf(request, env) {
     const id = await storePdf(env, pdf, filename);
     await recordHistory(env, {
       status: 'ok',
+      source: 'api',
       ai,
       filename,
       company,
@@ -1023,6 +1027,7 @@ async function handleTailorPdf(request, env) {
   } catch (error) {
     await recordHistory(env, {
       status: 'error',
+      source: 'api',
       ai,
       filename,
       company,

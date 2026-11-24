@@ -1,5 +1,7 @@
 import { STARTER_MASTER } from './demo-data.js';
 import { DEFAULT_AI_SETTINGS } from './ai.js';
+import { RUNS_KEY } from './run-history.js';
+import { clearWorkerToken } from './worker-token.js';
 
 const PREFIX = 'resumeStudio.v1';
 export const KEYS = {
@@ -8,6 +10,7 @@ export const KEYS = {
   jd: `${PREFIX}.jd`,
   plan: `${PREFIX}.plan`,
   onboarded: `${PREFIX}.onboarded`,
+  runs: RUNS_KEY,
 };
 
 // The API key deliberately lives in memory only. It is never written to
@@ -142,5 +145,6 @@ export function exportMasterJson(master) {
 
 export function clearAll() {
   Object.values(KEYS).forEach(remove);
+  clearWorkerToken();
   clearSessionApiKey();
 }

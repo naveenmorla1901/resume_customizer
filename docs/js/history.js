@@ -1,30 +1,11 @@
 import { escapeHtml } from './util.js';
+import { clearRuns, loadRuns } from './run-history.js';
+import { clearWorkerToken, loadWorkerToken, saveWorkerToken } from './worker-token.js';
 
 const DEFAULT_ENDPOINT = 'https://resume-deepseek-proxy.morla-naveen1901.workers.dev';
-const TOKEN_KEY = 'resumeStudio.workerToken';
-const LEGACY_TOKEN_KEY = 'resumeStudio.historyToken';
 const SETTINGS_KEY = 'resumeStudio.v1.settings';
 
 const $ = (id) => document.getElementById(id);
-
-function loadSavedToken() {
-  try {
-    return sessionStorage.getItem(TOKEN_KEY)
-      || sessionStorage.getItem(LEGACY_TOKEN_KEY)
-      || '';
-  } catch {
-    return '';
-  }
-}
-
-function saveToken(token) {
-  try {
-    sessionStorage.setItem(TOKEN_KEY, token);
-    sessionStorage.removeItem(LEGACY_TOKEN_KEY);
-  } catch {
-    // The request can still use the value from the input.
-  }
-}
 
 function readSavedProxyUrl() {
   try {
@@ -103,8 +84,21 @@ function setStatus(text) {
 function setBusy(busy) {
   $('btn-history-load').disabled = busy;
   $('btn-history-refresh').disabled = busy;
+  $('btn-history-clear-token').disabled = busy;
+  $('btn-clear-local-runs').disabled = busy;
   $('history-token').setAttribute('aria-busy', busy ? 'true' : 'false');
   $('btn-history-load').textContent = busy ? 'Loading…' : 'Load history';
+}
+
+function localRuns() {
+  return loadRuns().map((run) => ({ ...run, source: 'web' }));
+}
+
+function sourceBadge(item) {
+  if (item.source === 'web') return '<span class="badge badge-muted">This browser</span>';
+  if (item.source === 'mcp') return '<span class="badge badge-muted">MCP</span>';
+  if (item.source === 'api') return '<span class="badge badge-muted">Cloud API</span>';
+  return '<span class="badge badge-muted">Cloud</span>';
 }
 
 function renderSummary(items) {
@@ -186,6 +180,7 @@ function renderItem(item) {
         <div class="history-item-title">
           <strong>${title}</strong>
           ${status}
+          ${sourceBadge(item)}
         </div>
         <p class="history-item-meta">${metaBits.join(' · ')}</p>
         ${projects.length ? `<p class="history-item-projects">Projects: ${projects.join(' · ')}</p>` : ''}
@@ -209,23 +204,33 @@ function render(items) {
   empty.hidden = items.length > 0;
   empty.textContent = items.length
     ? ''
-    : 'No cloud calls yet. Run the MCP tool or POST /tailor.pdf, then refresh this page.';
+    : 'No runs yet. Tailor a resume in the studio, or run the MCP tool.';
 
-  $('history-count').textContent = `${items.length} call${items.length === 1 ? '' : 's'}`;
+  $('history-count').textContent = `${items.length} run${items.length === 1 ? '' : 's'}`;
   $('history-summary').hidden = items.length === 0;
   renderSummary(items);
-  setStatus(`${items.length} call${items.length === 1 ? '' : 's'} loaded`);
+  setStatus(`${items.length} run${items.length === 1 ? '' : 's'} loaded`);
 }
 
 async function loadHistory() {
-  const token = ($('history-token').value || '').trim() || loadSavedToken();
+  const tokenInput = $('history-token');
+  const typed = String(tokenInput.value || '').trim();
+  const token = typed || loadWorkerToken();
+  if (typed) saveWorkerToken(typed);
+
+  const local = localRuns();
   if (!token) {
-    showMessage('Enter the Worker token to load the history.', 'error');
-    $('history-token').focus();
+    render(local);
+    setStatus(local.length ? 'Local runs only' : 'No runs yet');
+    showMessage(
+      local.length
+        ? 'Showing runs from this browser. Enter the Worker token once to include MCP and cloud history; it will be remembered on this device.'
+        : 'Tailor a resume in the studio to create a local run, or enter the Worker token once to load MCP and cloud history.',
+      '',
+    );
     return;
   }
 
-  saveToken(token);
   setBusy(true);
   setStatus('Loading…');
   showMessage('');
@@ -243,37 +248,49 @@ async function loadHistory() {
       throw new Error(data?.error?.message || `The Worker returned HTTP ${response.status}.`);
     }
 
-    const items = (Array.isArray(data?.items) ? data.items : [])
-      .slice()
+    const cloud = (Array.isArray(data?.items) ? data.items : [])
+      .map((item) => ({ ...item, source: item.source || 'api' }));
+    const merged = [...cloud, ...local]
       .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
-    render(items);
+    render(merged);
+    if (!cloud.length && local.length) {
+      showMessage('No cloud calls yet; showing runs from this browser.', '');
+    }
   } catch (error) {
-    setStatus('Load failed');
+    render(local);
+    setStatus(local.length ? 'Local runs only' : 'Load failed');
     const message = error?.message === 'Failed to fetch'
       ? 'Could not reach the Worker. Check the endpoint and that this site is an allowed origin.'
-      : error?.message || 'Could not load the history.';
-    showMessage(message, 'error');
+      : error?.message || 'Could not load the cloud history.';
+    showMessage(`${message}${local.length ? ' Showing runs from this browser.' : ''}`, 'error');
   } finally {
     setBusy(false);
   }
 }
 
 const tokenInput = $('history-token');
-const savedToken = loadSavedToken();
+const savedToken = loadWorkerToken();
 if (savedToken) tokenInput.value = savedToken;
 
 $('history-endpoint').textContent = `Worker: ${apiBase()}`;
-$('btn-history-refresh').addEventListener('click', () => {
-  if (!($('history-token').value || '').trim()) {
-    $('history-token').focus();
-    showMessage('Enter the Worker token to load the history.', 'error');
-    return;
-  }
+$('btn-history-refresh').addEventListener('click', () => loadHistory());
+$('btn-history-clear-token').addEventListener('click', () => {
+  clearWorkerToken();
+  tokenInput.value = '';
+  loadHistory();
+});
+$('btn-clear-local-runs').addEventListener('click', () => {
+  const confirmed = window.confirm(
+    'Remove browser-run history from this device? Cloud and MCP history is not affected.',
+  );
+  if (!confirmed) return;
+  clearRuns();
   loadHistory();
 });
 $('history-token-form').addEventListener('submit', (event) => {
   event.preventDefault();
+  saveWorkerToken(tokenInput.value);
   loadHistory();
 });
 
-if (savedToken) loadHistory();
+loadHistory();

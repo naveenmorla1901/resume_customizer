@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Review previous cloud resume tailoring calls, ATS scores, and generated PDFs.">
+  <meta name="description" content="Review previous browser and cloud resume tailoring runs, ATS scores, and generated PDFs.">
   <meta name="theme-color" content="#1f3864">
   <title>Resume Studio — Tailoring history</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -24,7 +24,7 @@
       <div class="topbar-actions">
         <span class="status-pill" id="history-status">
           <span class="status-dot"></span>
-          <span id="history-status-text">Token required</span>
+          <span id="history-status-text">Loading…</span>
         </span>
         <a class="btn btn-ghost btn-sm" href="./">Back to studio</a>
       </div>
@@ -34,14 +34,15 @@
       <section class="card" aria-labelledby="history-title">
         <div class="card-head">
           <div>
-            <p class="eyebrow">Cloud activity</p>
-            <h1 id="history-title">Previous tailoring calls</h1>
+            <p class="eyebrow">Tailoring activity</p>
+            <h1 id="history-title">Previous tailoring runs</h1>
           </div>
-          <span class="badge badge-muted" id="history-count">No calls loaded</span>
+          <span class="badge badge-muted" id="history-count">No runs loaded</span>
         </div>
         <p class="helper">
-          Each PDF created by the MCP tool or <code>POST /tailor.pdf</code> is recorded on the Worker for 90 days.
-          Enter the Worker token to read the log. The token stays in this tab's session storage and is never saved to disk.
+          Runs you tailor in this browser are listed here, alongside each PDF created by the MCP tool or
+          <code>POST /tailor.pdf</code> and recorded on the Worker for 90 days. The Worker token is saved on this
+          device after the first entry, so the studio, this page, and the MCP connector use the same token.
         </p>
         <form class="history-token-form" id="history-token-form">
           <div class="history-token-field">
@@ -49,7 +50,8 @@
             <input id="history-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="PDF_API_TOKEN">
           </div>
           <button class="btn btn-primary btn-sm" id="btn-history-load" type="submit">Load history</button>
-          <button class="btn btn-ghost btn-sm" id="btn-history-refresh" type="button" disabled>Refresh</button>
+          <button class="btn btn-ghost btn-sm" id="btn-history-refresh" type="button">Refresh</button>
+          <button class="btn btn-ghost btn-sm" id="btn-history-clear-token" type="button">Clear token</button>
         </form>
         <p class="mini-note history-message" id="history-message" role="status" aria-live="polite" hidden></p>
 
@@ -63,11 +65,11 @@
             <strong id="summary-change">—</strong>
           </div>
           <div class="history-stat">
-            <span>Successful calls</span>
+            <span>Successful runs</span>
             <strong id="summary-ok">—</strong>
           </div>
           <div class="history-stat">
-            <span>Failed calls</span>
+            <span>Failed runs</span>
             <strong id="summary-error">—</strong>
           </div>
         </div>
@@ -77,18 +79,19 @@
         <div class="card-head">
           <div>
             <p class="eyebrow">Newest first</p>
-            <h2 id="history-list-title">Call log</h2>
+            <h2 id="history-list-title">Run log</h2>
           </div>
+          <button class="btn btn-ghost btn-sm" id="btn-clear-local-runs" type="button">Clear browser runs</button>
         </div>
         <div class="history-list" id="history-list"></div>
         <div class="history-empty" id="history-empty">
-          Enter the Worker token and load the history to see cloud calls.
+          Tailor a resume in the studio, or enter the Worker token once to load MCP and cloud history.
         </div>
       </section>
     </main>
 
     <footer class="app-footer">
-      <span>History is stored in Workers KV with a 90-day retention. PDF download links expire 60 minutes after generation.</span>
+      <span>Cloud history is stored in Workers KV for 90 days and PDF links expire after 60 minutes. Browser runs stay on this device until you clear them.</span>
       <span class="history-endpoint" id="history-endpoint"></span>
     </footer>
   </div>

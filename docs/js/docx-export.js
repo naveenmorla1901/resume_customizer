@@ -4,7 +4,7 @@
  * Recreates the master resume's Word layout:
  *   US Letter, 0.486" top/bottom, 0.6" left/right, Calibri,
  *   20pt name, 11pt section headings with a 0.75pt navy rule,
- *   10pt job/project titles, 9.5pt body, right tab at 6.5".
+ *   10pt job/project titles, 9.5pt body, right tab at the 7.3" text edge.
  *
  * The function takes the `docx` namespace as an argument so the same
  * code runs in the browser (window.docx) and in Node tests.
@@ -76,16 +76,20 @@ function bulletParagraph(docx, text, opts = {}) {
 }
 
 function titleWithDate(docx, leftRuns, dates, opts = {}) {
-  const { Paragraph, TextRun } = docx;
+  const { Paragraph, TextRun, Tab } = docx;
   const size = opts.size ?? 20;
   const extra = opts.extra || 0;
   return new Paragraph({
     keepNext: true,
-    tabStops: [{ type: 'right', position: 9360 }],
+    // Letter width (12240 twips) minus the 864-twip left and right margins.
+    // A literal tab character in a TextRun is not the same as a Word tab;
+    // use the Tab component so the date lands on the right margin in Word,
+    // Gmail previews, and Google Docs instead of sitting next to the title.
+    tabStops: [{ type: 'right', position: 10512 }],
     spacing: { before: (opts.before ?? 108) + extra, after: (opts.after ?? 12) + extra },
     children: [
       ...leftRuns,
-      new TextRun({ children: ['\t'], font: FONT }),
+      new TextRun({ children: [new Tab()], font: FONT }),
       new TextRun({ text: dates, bold: true, size, font: FONT, color: BODY }),
     ],
   });

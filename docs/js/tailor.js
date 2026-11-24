@@ -1,7 +1,8 @@
 import { TAXONOMY, CORE_SKILL_NAMES } from './taxonomy.js';
 import { analyzeJd, buildAtsReport, countTerm, resumeToText } from './ats.js';
+import { focusSentence } from './domain-focus.js';
 import { emphasizePlan } from './emphasis.js';
-import { normalizeText, unique } from './util.js';
+import { joinNatural, normalizeText, unique } from './util.js';
 
 const TERM_BY_NAME = new Map(TAXONOMY.map((t) => [t.name.toLowerCase(), t]));
 
@@ -59,6 +60,15 @@ const HEADLINE_RULES = [
 // tool, metric, employer, or responsibility that is not already in the bullet.
 const ALIGNMENT_RULES = [
   {
+    label: 'capacity planning',
+    jd: /\b(?:capacity planning|demand planning|demand forecasting|inventory planning|workload planning|resource planning)\b/i,
+    // Include an existing "predictive" prefix so the rewrite cannot produce
+    // "predictive predictive forecasting ...".
+    source: /\b(?:predictive )?forecasting models?\b/i,
+    target: 'predictive forecasting and capacity-planning models',
+    already: /capacity-planning/i,
+  },
+  {
     label: 'predictive forecasting',
     jd: /\b(?:forecast|forecasting|predictive model|predictive analytics|time series)\b/i,
     source: /\bforecasting models?\b/i,
@@ -73,6 +83,13 @@ const ALIGNMENT_RULES = [
     already: /NLP and LLM-based sentiment analysis/i,
   },
   {
+    label: 'operational KPI dashboards',
+    jd: /\b(?:operations?|operational|kpis?|reporting|dashboards?)\b/i,
+    source: /\bPower BI dashboards?\b/i,
+    target: 'operational KPI dashboards using Power BI',
+    already: /operational KPI dashboards/i,
+  },
+  {
     label: 'business intelligence dashboards',
     jd: /\b(?:business intelligence|bi\b|dashboards?|reporting)\b/i,
     source: /\bPower BI dashboards?\b/i,
@@ -80,18 +97,43 @@ const ALIGNMENT_RULES = [
     already: /business intelligence dashboards using Power BI/i,
   },
   {
-    label: 'real-time analytics',
-    jd: /\b(?:real[ -]?time|streaming|analytics)\b/i,
+    label: 'real-time operational analytics',
+    jd: /\b(?:real[ -]?time|streaming|analytics|monitoring|observability|telemetry)\b/i,
     source: /\breal time insights\b/i,
-    target: 'real-time analytics and insights',
-    already: /real-time analytics and insights/i,
+    target: 'real-time analytics and operational insights',
+    already: /real-time analytics and operational insights/i,
   },
   {
-    label: 'CI/CD and model deployment',
-    jd: /\b(?:ci\/cd|mlops|model deployment|deployment|devops)\b/i,
+    label: 'CI/CD deployment',
+    jd: /\b(?:ci\/cd|mlops|model deployment|deployment|devops|automation)\b/i,
     source: /\bCI\/CD pipelines\b/i,
-    target: 'CI/CD and model deployment pipelines',
-    already: /CI\/CD and model deployment pipelines/i,
+    target: 'CI/CD deployment pipelines',
+    already: /CI\/CD deployment pipelines/i,
+  },
+  {
+    label: 'data governance and data quality',
+    jd: /\b(?:data governance|data quality|data integrity|data validation|data stewardship)\b/i,
+    source: /\bdata requirements and governance standards\b/i,
+    target: 'data requirements, data governance, and data quality standards',
+    already: /data governance, and data quality standards/i,
+    // The evidence is in an older role, so the rule must be allowed there.
+    anyRole: true,
+  },
+  {
+    label: 'reliable data pipelines',
+    jd: /\b(?:reliability|data quality|pipelines?|etl|ingestion)\b/i,
+    source: /\bdata pipelines?\b/i,
+    target: 'reliable data pipelines',
+    already: /reliable data pipelines/i,
+  },
+  {
+    label: 'scalable APIs',
+    jd: /\b(?:apis?|microservices?|scalab(?:le|ility)|services?)\b/i,
+    // The master bolds "FastAPI" and may already say "high performance", so
+    // match both forms and carry the emphasis through the rewrite.
+    source: /(?:high[- ]performance\s+)?(\*\*FastAPI\*\*|\bFastAPI\b) endpoints?/i,
+    target: 'scalable, high-performance $1 endpoints',
+    already: /scalable, high-performance (?:\*\*)?FastAPI(?:\*\*)? endpoints/i,
   },
   {
     label: 'statistical modeling / machine learning',
@@ -133,6 +175,22 @@ function ranked(items, scoreFn) {
   return items
     .map((item, index) => ({ item, index, score: scoreFn(item, index) }))
     .sort((a, b) => b.score - a.score || a.index - b.index);
+}
+
+function hasPhrase(text, phrase) {
+  const escaped = String(phrase || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return escaped ? new RegExp(`\\b${escaped}\\b`, 'i').test(String(text || '')) : false;
+}
+
+function focusScore(text, focusAreas = []) {
+  // Use the strongest matching focus area, not the sum. Otherwise a generic
+  // bullet that mentions dashboards, stakeholders, and reporting can outrank
+  // a bullet with a specific, high-value capability such as capacity planning.
+  let best = 0;
+  for (const area of focusAreas) {
+    if (area.evidence.test(text)) best = Math.max(best, Number(area.weight) || 1);
+  }
+  return best;
 }
 
 function groupRelevance(group, keywords) {
@@ -281,7 +339,8 @@ function pickProjects(master, analysis) {
     const text = [project.name, project.tech, ...(project.bullets || [])].join(' ');
     return textScore(text, keywords)
       + textScore(project.tech || '', keywords) * 0.5
-      + uniqueCoverage(text, keywords, baseText) * 1.25;
+      + uniqueCoverage(text, keywords, baseText) * 1.25
+      + focusScore(text, analysis.focusAreas);
   }).slice(0, MAX_PROJECTS).map(({ item: project }) => {
     const bulletRank = ranked(project.bullets || [], (bullet) => (
       textScore(bullet, keywords) + uniqueCoverage(bullet, keywords, baseText)
@@ -293,8 +352,12 @@ function pickProjects(master, analysis) {
 function pickExperience(master, analysis) {
   const keywords = analysis.keywords.filter((k) => k.score);
   return (master.experience || []).map((role, index) => {
-    const bulletRank = ranked(role.bullets || [], (bullet) => textScore(bullet, keywords))
-      .map(({ item }) => item);
+    // The JD's focus areas are the strongest signal in every role. Put a
+    // specific focus match (capacity planning, predictive maintenance,
+    // reliability) ahead of a bullet that only repeats generic keywords.
+    const bulletRank = ranked(role.bullets || [], (bullet) => (
+      focusScore(bullet, analysis.focusAreas) * 10 + textScore(bullet, keywords)
+    )).map(({ item }) => item);
     return { id: role.id, bullets: bulletRank.slice(0, roleBulletCap(index)) };
   });
 }
@@ -381,6 +444,25 @@ function chooseSkills(analysis, master) {
     'LLM & GenAI', 'ML & AI', 'Languages', 'Cloud', 'Frameworks & Libraries',
     'BI & Visualization', 'Databases', 'DevOps & MLOps', 'Statistics', 'Data & Analytics',
   ];
+  const masterSkills = (master.skills || [])
+    .flatMap((group) => group.items || [])
+    .map((item) => normalizeText(item).toLowerCase())
+    .filter(Boolean);
+  const masterText = resumeToText(master).toLowerCase();
+  const broadLabels = new Set([
+    'dashboarding', 'business intelligence', 'data visualization', 'data analysis',
+    'analytics', 'reporting', 'data driven', 'data-driven',
+  ]);
+  const isMasterSkill = (name) => {
+    const key = normalizeText(name).toLowerCase();
+    if (key.length < 3 || broadLabels.has(key)) return false;
+    if (masterText.includes(key)) return true;
+    return masterSkills.some((item) => item === key || item.includes(key));
+  };
+  // Prefer concrete tools that actually appear in the skills section over
+  // broad taxonomy labels such as "Dashboarding" or "Business Intelligence".
+  const preferred = matched.filter((keyword) => isMasterSkill(keyword.name));
+  const pool = preferred.length >= 3 ? preferred : matched;
   const chosen = [];
   // Experimentation is a high-signal growth/analytics term. If the job asks
   // for it and the resume already proves it through A/B tests, keep the word
@@ -388,12 +470,12 @@ function chooseSkills(analysis, master) {
   const experimentation = matched.find((k) => k.name === 'Experimentation');
   if (experimentation) chosen.push(experimentation.name);
   for (const category of priority) {
-    for (const keyword of matched.filter((k) => k.category === category)) {
+    for (const keyword of pool.filter((k) => k.category === category)) {
       if (chosen.length >= 9) break;
       if (!chosen.some((c) => c.toLowerCase() === keyword.name.toLowerCase())) chosen.push(keyword.name);
     }
   }
-  for (const keyword of matched) {
+  for (const keyword of pool) {
     if (chosen.length >= 9) break;
     if (!chosen.some((c) => c.toLowerCase() === keyword.name.toLowerCase())) chosen.push(keyword.name);
   }
@@ -410,7 +492,10 @@ function latestRoleHighlights(master, analysis) {
   for (const cap of CAPABILITIES) {
     if (picked.length >= 3) break;
     if (!cap.terms.some((term) => jdMatches.includes(term.toLowerCase()))) continue;
-    if (roleText.toLowerCase().includes(cap.phrase.toLowerCase())) picked.push(cap.label);
+    // "Power BI dashboards" and "executive dashboards" describe the same
+    // evidence; keep one dashboard phrase instead of repeating it.
+    if (picked.some((label) => /dashboard/i.test(label)) && /dashboard/i.test(cap.label)) continue;
+    if (hasPhrase(roleText, cap.phrase)) picked.push(cap.label);
   }
   if (!picked.length) {
     // Even when the JD does not name an exact capability, the latest role
@@ -418,32 +503,31 @@ function latestRoleHighlights(master, analysis) {
     for (const fallback of ['forecasting models', 'LLM sentiment analysis', 'Power BI dashboards', 'FastAPI data pipelines']) {
       if (picked.length >= 2) break;
       const cap = CAPABILITIES.find((item) => item.label === fallback);
-      if (cap && roleText.toLowerCase().includes(cap.phrase.toLowerCase())) picked.push(cap.label);
+      if (cap && hasPhrase(roleText, cap.phrase)) picked.push(cap.label);
     }
   }
   return unique(picked).slice(0, 3);
 }
 
-function joinNatural(items = []) {
-  if (items.length <= 1) return items[0] || '';
-  if (items.length === 2) return `${items[0]} and ${items[1]}`;
-  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
-}
-
 function chooseCapabilities(analysis, master) {
-  const text = resumeToText(master).toLowerCase();
+  // "Most recently, delivered ..." must only cite the latest role, not a
+  // project or an older employer.
+  const role = (master.experience || [])[0];
+  const text = [role?.title, ...(role?.bullets || [])].filter(Boolean).join(' ').toLowerCase();
   const jdMatches = analysis.keywords.filter((k) => k.matched).map((k) => k.name.toLowerCase());
   const picked = [];
   for (const cap of CAPABILITIES) {
     if (picked.length >= 3) break;
-    if (!text.includes(cap.phrase.toLowerCase())) continue;
+    if (!hasPhrase(text, cap.phrase)) continue;
     if (!cap.terms.some((t) => jdMatches.includes(t.toLowerCase()))) continue;
+    if (picked.some((label) => /dashboard/i.test(label)) && /dashboard/i.test(cap.label)) continue;
     if (!picked.includes(cap.label)) picked.push(cap.label);
   }
   if (picked.length < 2) {
     for (const fallback of ['forecasting models', 'RAG pipelines', 'FastAPI data pipelines', 'production MLOps']) {
       if (picked.length >= 3) break;
-      if (text.includes(fallback.split(' ')[0].toLowerCase()) && !picked.includes(fallback)) picked.push(fallback);
+      const cap = CAPABILITIES.find((item) => item.label === fallback);
+      if (cap && hasPhrase(text, cap.phrase) && !picked.includes(cap.label)) picked.push(cap.label);
     }
   }
   return picked.slice(0, 3);
@@ -461,8 +545,11 @@ export function buildLocalSummary(master, analysis) {
     : capabilities.length
       ? capabilities
       : ['production ML pipelines', 'LLM applications', 'scalable APIs'];
-  const summary = `${headline} with ${years} years of experience building production ML, GenAI, and analytics systems across ${domains}. Deep expertise in ${skills}. Most recently, delivered ${joinNatural(delivery)}.`;
-  return shrinkSummary(summary, 540);
+  // Name the target role and the JD focus areas that the resume can honestly
+  // support. This is the part that changes when the job family changes.
+  const target = focusSentence(analysis);
+  const summary = `${headline} with ${years} years of experience building production ML, GenAI, and data systems across ${domains}.${target ? ` ${target}` : ''} Deep expertise in ${skills}. Most recently, delivered ${joinNatural(delivery)}.`;
+  return shrinkSummary(summary, 640);
 }
 
 export function shrinkSummary(summary, maxChars = 480) {

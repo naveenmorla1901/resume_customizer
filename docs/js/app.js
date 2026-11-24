@@ -45,6 +45,7 @@ import {
   isUrlOnly,
   normalizeUrl,
 } from './jd-import.js';
+import { recordRun } from './run-history.js';
 import {
   buildLocalPlan,
   defaultProjects,
@@ -52,6 +53,12 @@ import {
   planStats,
 } from './tailor.js';
 import {
+  clearWorkerToken,
+  loadWorkerToken,
+  saveWorkerToken,
+} from './worker-token.js';
+import {
+  compactTitle,
   copyText,
   debounce,
   downloadBlob,
@@ -77,35 +84,7 @@ const state = {
 
 const DEFAULT_TAILOR_NOTE = 'Tailoring keeps your wording factual: it selects, reorders, aligns, and trims existing content.';
 let lastAutoLoadedUrl = '';
-
-// Shared with history.js: one Worker token per browser tab, never localStorage.
-const JD_TOKEN_KEY = 'resumeStudio.workerToken';
-const LEGACY_JD_TOKEN_KEY = 'resumeStudio.historyToken';
-
-function loadJdToken() {
-  try {
-    return sessionStorage.getItem(JD_TOKEN_KEY)
-      || sessionStorage.getItem(LEGACY_JD_TOKEN_KEY)
-      || '';
-  } catch {
-    return '';
-  }
-}
-
-function saveJdToken(value) {
-  try {
-    const token = String(value || '').trim();
-    if (token) {
-      sessionStorage.setItem(JD_TOKEN_KEY, token);
-      sessionStorage.removeItem(LEGACY_JD_TOKEN_KEY);
-    } else {
-      sessionStorage.removeItem(JD_TOKEN_KEY);
-      sessionStorage.removeItem(LEGACY_JD_TOKEN_KEY);
-    }
-  } catch {
-    // Session storage can be unavailable in private or embedded contexts.
-  }
-}
+let documentTitleBeforePrint = '';
 
 function workerEndpoint() {
   try {
@@ -341,6 +320,18 @@ function renderAts(baseReport, report) {
   $('title-meter').style.width = `${report.titleScore}%`;
   $('format-score').textContent = `${report.formatScore}%`;
   $('format-meter').style.width = `${report.formatScore}%`;
+
+  const focusLine = $('focus-line');
+  if (focusLine) {
+    if (report.focusScore === null || report.focusScore === undefined) {
+      focusLine.hidden = true;
+    } else {
+      focusLine.hidden = false;
+      $('focus-score').textContent = `${report.focusScore}%`;
+      $('focus-meter').style.width = `${report.focusScore}%`;
+    }
+  }
+
   $('ats-heading').textContent = report.title || 'Match report';
   setBadge($('ats-confidence'), `${report.confidence} confidence`, 'badge-muted');
 
@@ -367,7 +358,15 @@ function renderAts(baseReport, report) {
   const absent = missing.filter((keyword) => !keyword.inMaster);
   const omitted = missing.filter((keyword) => keyword.inMaster);
   const unknown = extractUnknownTerms(reportJd, report.resumeText);
+  const focusAreas = report.focusAreas || [];
+  const unsupportedFocus = report.unsupportedFocus || [];
   const parts = [];
+  if (focusAreas.length) {
+    parts.push(`Transferable focus supported by your resume: ${focusAreas.map((area) => area.label).join(', ')}.`);
+  }
+  if (unsupportedFocus.length) {
+    parts.push(`JD focus areas not supported by your resume: ${unsupportedFocus.map((area) => area.label).join(', ')}. These are not auto-added.`);
+  }
   if (omitted.length) {
     parts.push(`Still in your master but not in this tailored version: ${omitted.map((k) => k.name).join(', ')}. Tailor again if the fit allows more room.`);
   }
@@ -746,7 +745,7 @@ async function loadJdFromUrl(value, opts = {}) {
     $('jd-url').focus();
     return '';
   }
-  const token = ($('jd-token')?.value || '').trim() || loadJdToken();
+  const token = ($('jd-token')?.value || '').trim() || loadWorkerToken();
   setUrlLoading(true);
   try {
     const result = await fetchJobDescription(url, {
@@ -907,6 +906,25 @@ async function tailorResume() {
     state.baseReport = baseReport;
     state.report = buildAtsReport(tailored, jd);
 
+    const targetTitle = state.report.title || 'Resume';
+    const selectedProjects = (fittedPlan.projects || [])
+      .map((selected) => (state.master.projects || []).find((project) => project.id === selected.id)?.name)
+      .filter(Boolean);
+    const scoreDelta = state.report.score - baseReport.score;
+    recordRun({
+      mode: fittedPlan.source === 'deepseek' ? 'ai' : 'local',
+      filename: `${resumeFileBase()}.pdf`,
+      role: targetTitle,
+      score: state.report.score,
+      delta: scoreDelta > 0
+        ? `+${scoreDelta} ATS points from tailoring`
+        : scoreDelta === 0
+          ? 'ATS match unchanged'
+          : `${scoreDelta} ATS points from tailoring`,
+      projects: selectedProjects,
+      dedupeKey: `${targetTitle}|${state.report.score}|${jd.length}|${jd.slice(0, 160)}|${selectedProjects.join(',')}`,
+    });
+
     renderPreview();
     savePlan(state.plan);
     renderAts(state.baseReport, state.report);
@@ -949,6 +967,12 @@ function ensurePlanFits() {
   return fit.fitted;
 }
 
+function resumeFileBase() {
+  const name = state.master.profile?.name || 'Resume';
+  const title = compactTitle(state.report?.title || state.baseReport?.title || '');
+  return sanitizeFilename(`${name}_Resume${title ? `_${title}` : ''}`);
+}
+
 async function downloadDocx() {
   if (!requireContact('exporting')) return;
   if (!globalThis.docx?.Packer) {
@@ -966,11 +990,10 @@ async function downloadDocx() {
     const tailored = materializePlan(state.master, displayPlan);
     const targetTitle = state.report?.title || state.baseReport?.title || 'Resume';
     const name = state.master.profile?.name || 'Resume';
-    const date = new Date().toISOString().slice(0, 10);
-    const filename = `${sanitizeFilename(`${name}_Resume_${targetTitle}_${date}`)}.docx`;
+    const filename = `${resumeFileBase()}.docx`;
 
     const blob = await createDocxBlob(globalThis.docx, state.master, tailored, {
-      title: `${name} — ${targetTitle}`,
+      title: `${name} — ${compactTitle(targetTitle) || 'Resume'}`,
       subject: `Resume tailored for ${targetTitle}`,
       keywords: (state.report?.keywords || []).slice(0, 20).map((keyword) => keyword.name).join(', '),
     });
@@ -985,6 +1008,17 @@ async function downloadDocx() {
   }
 }
 
+/**
+ * Chrome, Edge, and Firefox use document.title as the default PDF filename.
+ * Set it only for the print call, then restore the tab title afterwards.
+ * beforeprint also covers Ctrl+P, and the guard prevents double-saving.
+ */
+function preparePrintTitle() {
+  if (documentTitleBeforePrint) return;
+  documentTitleBeforePrint = document.title;
+  document.title = resumeFileBase();
+}
+
 async function printPdf() {
   if (!requireContact('printing')) return;
   ensurePlanFits();
@@ -994,6 +1028,7 @@ async function printPdf() {
   } catch {
     // Font loading is best-effort.
   }
+  preparePrintTitle();
   window.print();
 }
 
@@ -1158,7 +1193,7 @@ function bindEvents() {
   $('btn-export-json').addEventListener('click', exportJson);
   $('btn-reset-starter').addEventListener('click', resetToStarter);
   $('btn-clear-all').addEventListener('click', () => {
-    if (!window.confirm('Clear the resume, job description, plan, and saved settings from this browser? The in-memory API key and saved proxy URL are also cleared.')) return;
+    if (!window.confirm('Clear the resume, job description, plan, saved settings, Worker token, and browser run history from this device? The in-memory API key is also cleared.')) return;
     clearAll();
     window.location.reload();
   });
@@ -1196,15 +1231,15 @@ function bindEvents() {
   });
   const jdTokenInput = $('jd-token');
   if (jdTokenInput) {
-    jdTokenInput.value = loadJdToken();
+    jdTokenInput.value = loadWorkerToken();
     updateCloudReaderState();
     jdTokenInput.addEventListener('input', () => {
-      saveJdToken(jdTokenInput.value);
+      saveWorkerToken(jdTokenInput.value);
       updateCloudReaderState();
     });
     $('btn-clear-jd-token')?.addEventListener('click', () => {
       jdTokenInput.value = '';
-      saveJdToken('');
+      clearWorkerToken();
       updateCloudReaderState();
       jdTokenInput.focus();
     });
@@ -1229,7 +1264,14 @@ function bindEvents() {
   $('btn-download').addEventListener('click', downloadDocx);
   $('btn-print').addEventListener('click', printPdf);
   $('btn-copy').addEventListener('click', copyResumeText);
-  window.addEventListener('afterprint', () => { $('print-root').innerHTML = ''; });
+  window.addEventListener('beforeprint', preparePrintTitle);
+  window.addEventListener('afterprint', () => {
+    $('print-root').innerHTML = '';
+    if (documentTitleBeforePrint) {
+      document.title = documentTitleBeforePrint;
+      documentTitleBeforePrint = '';
+    }
+  });
 
   // Import
   $('file-input').addEventListener('change', () => handleImportFile($('file-input').files?.[0]));

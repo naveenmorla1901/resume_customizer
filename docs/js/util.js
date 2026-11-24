@@ -86,6 +86,13 @@ export function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
+export function joinNatural(items = []) {
+  const values = items.filter(Boolean);
+  if (values.length <= 1) return values[0] || '';
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(', ')}, and ${values[values.length - 1]}`;
+}
+
 export function truncateAtWord(value = '', maxChars = 200, suffix = '…') {
   const text = String(value).trim();
   if (text.length <= maxChars) return text;
@@ -108,7 +115,32 @@ export function sanitizeFilename(value = 'resume') {
     .replace(/\s+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '')
-    .slice(0, 120) || 'resume';
+    .slice(0, 120)
+    .replace(/_+$/, '') || 'resume';
+}
+
+/**
+ * Keep an exported filename short and predictable. A job title can contain a
+ * team, req ID, or location suffix; only the first clean segment belongs in a
+ * filename. The resume itself keeps the full title.
+ */
+export function compactTitle(value = '', { maxWords = 6, maxChars = 48 } = {}) {
+  const primary = String(value || '')
+    .replace(/\([^)]*\)/g, ' ')
+    .split(/\s*[|•·]\s*|\s+\/\s+|,\s|\s[-–—]\s/)[0]
+    .replace(/\b(?:job\s*id|req(?:uisition)?|reference|posting)\b\s*[:#-]?\s*[\w-]+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  let compact = primary.split(' ').filter(Boolean).slice(0, maxWords).join(' ');
+  if (compact.length > maxChars) {
+    compact = compact.slice(0, maxChars);
+    const lastSpace = compact.lastIndexOf(' ');
+    if (lastSpace > maxChars * 0.5) compact = compact.slice(0, lastSpace);
+  }
+  return compact
+    .replace(/[\s,;:.-]+$/, '')
+    .replace(/\s+(?:and|or|for|with|of|the|a|an)$/i, '')
+    .trim();
 }
 
 export function downloadBlob(blob, filename) {

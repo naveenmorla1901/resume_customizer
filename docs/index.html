@@ -79,7 +79,7 @@
                 <input id="jd-token" type="password" autocomplete="off" spellcheck="false" placeholder="PDF_API_TOKEN" aria-describedby="cloud-reader-note">
                 <button class="link-btn" id="btn-clear-jd-token" type="button">Clear</button>
               </div>
-              <p class="mini-note" id="cloud-reader-note">Stored in this tab only. When set, <strong>Load URL</strong> tries DeepSeek Fetch and Search first, then falls back to the public reader. Use the same token as the History page.</p>
+              <p class="mini-note" id="cloud-reader-note">Saved on this device after the first entry. The same token is used by the History page and the MCP connector. When set, <strong>Load URL</strong> tries DeepSeek Fetch and Search first, then falls back to the public reader. Use <strong>Clear</strong> on a shared computer.</p>
             </div>
           </details>
           <textarea id="jd-input" rows="9" placeholder="Paste the full job post here, or paste a job posting URL and the app will read it. Include the title, requirements, and preferred qualifications."></textarea>
@@ -130,6 +130,10 @@
               <div class="score-line">
                 <span>Format checks</span><strong id="format-score">0%</strong>
                 <div class="meter"><i id="format-meter" style="width:0%"></i></div>
+              </div>
+              <div class="score-line" id="focus-line" hidden>
+                <span>Domain focus fit</span><strong id="focus-score">—</strong>
+                <div class="meter"><i id="focus-meter" style="width:0%"></i></div>
               </div>
             </div>
           </div>

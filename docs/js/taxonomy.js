@@ -104,7 +104,7 @@ export const TAXONOMY = [
   { name: 'Data Analytics', category: 'Data & Analytics', aliases: ['data analytics', 'analytics'] },
   { name: 'Data Engineering', category: 'Data & Analytics', aliases: ['data engineering', 'data engineer'] },
   { name: 'Data Modeling', category: 'Data & Analytics', aliases: ['data modeling', 'data modelling', 'dimensional modeling'] },
-  { name: 'Data Warehousing', category: 'Data & Analytics', aliases: ['data warehousing', 'data warehouse'] },
+  { name: 'Data Warehousing', category: 'Data & Analytics', aliases: ['data warehousing', 'data warehouse', 'snowflake', 'redshift', 'databricks', 'data lakehouse', 'lakehouse'] },
   { name: 'Data Lake', category: 'Data & Analytics', aliases: ['data lake', 'data lakehouse', 'lakehouse'] },
   { name: 'ETL', category: 'Data & Analytics', aliases: ['etl', 'extract transform load'] },
   { name: 'ELT', category: 'Data & Analytics', aliases: ['elt', 'extract load transform'] },
@@ -193,7 +193,7 @@ export const TAXONOMY = [
   { name: 'Elasticsearch', category: 'Databases', aliases: ['elasticsearch', 'elastic search'] },
   { name: 'SQLite', category: 'Databases', aliases: ['sqlite'] },
   { name: 'Neo4j', category: 'Databases', aliases: ['neo4j'] },
-  { name: 'Data Warehouse', category: 'Databases', aliases: ['data warehouse', 'warehouse'] },
+  { name: 'Data Warehouse', category: 'Databases', aliases: ['data warehouse', 'warehouse', 'snowflake', 'redshift', 'databricks', 'data lakehouse', 'lakehouse'] },
 
   // DevOps & MLOps
   { name: 'Docker', category: 'DevOps & MLOps', aliases: ['docker', 'containerization', 'containers'], core: true },

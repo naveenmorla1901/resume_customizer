@@ -4,6 +4,7 @@ import {
   ROLE_TITLES,
   TAXONOMY,
 } from './taxonomy.js';
+import { extractFocusAreas, focusCoverage } from './domain-focus.js';
 import { normalizeText, unique } from './util.js';
 
 const SECTION_RE = /^(?:required|requirements|must[ -]?have|minimum qualifications|basic qualifications|what you(?:'|’)?ll need|qualifications|preferred|preferred qualifications|nice[ -]?to[ -]?have|bonus points|bonus|about the role|the role|responsibilities|what you(?:'|’)?ll do)\b/i;
@@ -362,7 +363,8 @@ export function buildAtsReport(master = {}, jd = '', opts = {}) {
   const matched = keywords.filter((k) => k.matched);
   const missing = keywords.filter((k) => !k.matched);
   const confidence = scored.length >= 14 ? 'high' : scored.length >= 7 ? 'medium' : 'low';
-  return {
+  const focus = extractFocusAreas(jd, resumeText);
+  const report = {
     ...base,
     keywords,
     matched,
@@ -376,8 +378,12 @@ export function buildAtsReport(master = {}, jd = '', opts = {}) {
     confidence,
     totalKeywords: scored.length,
     matchedKeywords: matched.filter((k) => k.score).length,
+    focusAreas: focus.supported,
+    unsupportedFocus: focus.unsupported,
     resumeText,
   };
+  report.focusScore = focusCoverage(report);
+  return report;
 }
 
 export function keywordCoverage(report) {

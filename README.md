@@ -22,7 +22,7 @@ The app is plain HTML, CSS, and JavaScript in [`docs/`](docs/) and is deployed w
 - **Protects the two-page limit.** A fit pass measures the rendered preview and trims the summary and expendable content (older-role bullets, project bullets, lower-priority skill groups) until both pages fit with a safety margin. A fill pass then adds a small, capped amount of vertical spacing so neither page ends with a large empty block; the font size does not change.
 - **Produces ATS-friendly output.** Single-column text, real DOCX paragraphs and bullet lists, no text boxes or images, and a selectable-text PDF path.
 - **Works without AI.** Local tailoring deterministically scores, selects, and aligns existing content. DeepSeek is optional and can improve selection plus JD-aligned wording.
-- **Keeps data in the browser.** Resume content, the job description, and non-secret settings are stored in `localStorage`. In direct mode the DeepSeek API key is kept in memory for the current tab only. In secure proxy mode the key is stored as a GitHub Actions secret and injected into a Cloudflare Worker, so it never reaches the browser. There is no account and no analytics.
+- **Keeps data in the browser.** Resume content, the job description, non-secret settings, the optional Worker token, and a local list of tailoring runs are stored in `localStorage`. In direct mode the DeepSeek API key is kept in memory for the current tab only. In secure proxy mode the key is stored as a GitHub Actions secret and injected into a Cloudflare Worker, so it never reaches the browser. There is no account and no analytics.
 
 ## How it works
 
@@ -46,6 +46,8 @@ After Pages is enabled and the workflow has run, the app is at **https://naveenm
 5. Select **Tailor my resume**.
 6. Review the match report, the missing-keyword explanations, the changes list, and the live two-page preview.
 7. Select **Download DOCX** for applications that accept Word files, or **Print / PDF** and choose *Save as PDF*.
+
+Exports are named `Name_Resume_Target_Title`. A long job title is shortened to its first clean segment so a team name, req ID, or location does not make the filename unwieldy. The PDF uses the same name instead of the browser tab title.
 
 For a PDF, use Letter paper, default margins, and 100% scale. Enable background graphics if your browser's preview drops the heading accents.
 
@@ -320,13 +322,13 @@ Do not ask Claude to open the website and operate it. That path requires many br
 
 ### 5. Use the DeepSeek reader on the website (optional)
 
-Open the app, expand **DeepSeek cloud reader** under the URL box, and paste `PDF_API_TOKEN`. The token is kept in `sessionStorage` for that tab only and is shared with the History page. **Load URL** now calls `/fetch-jd` first, so thin or JavaScript-heavy pages get DeepSeek Fetch plus the Search fallback.
+Open the app, expand **DeepSeek cloud reader** under the URL box, and paste `PDF_API_TOKEN`. The token is saved on this device after the first entry and is shared with the History page and the MCP connector, so you do not paste it on every visit. **Load URL** now calls `/fetch-jd` first, so thin or JavaScript-heavy pages get DeepSeek Fetch plus the Search fallback.
 
-Leave the token blank to keep the zero-setup path: Jina Reader, then the public reader, then a direct fetch. If the public readers cannot read a page, the token panel opens with a hint. The token is never written to `localStorage` or the URL.
+Leave the token blank to keep the zero-setup path: Jina Reader, then the public reader, then a direct fetch. If the public readers cannot read a page, the token panel opens with a hint. The token is never written to the URL. Use **Clear** on a shared computer to remove it from `localStorage`; private browsing may keep it only for the current tab.
 
 ### 6. Review previous cloud calls
 
-Open **https://naveenmorla1901.github.io/resume_customizer/history.html**, enter `PDF_API_TOKEN`, and select **Load history**. The token is kept in `sessionStorage` for that tab only and is shared with the **DeepSeek cloud reader** on the main page. The page shows each cloud call newest first with its timestamp, filename, company/role, mode, ATS score, selected projects, and a temporary PDF link. It also summarizes the latest score and the change from the previous scored call.
+Open **https://naveenmorla1901.github.io/resume_customizer/history.html**. The page loads automatically: runs tailored in this browser come from `localStorage`, and MCP/cloud PDF calls come from the Worker. If you have not entered `PDF_API_TOKEN` on this device, enter it once and select **Load history**; it is then saved on this device and shared with the **DeepSeek cloud reader** on the main page. The page shows each run newest first with its timestamp, source badge (This browser, MCP, or Cloud API), filename, company/role, mode, ATS score, selected projects, and a temporary PDF link for cloud runs. It also summarizes the latest score and the change from the previous scored call.
 
 The page reads the authenticated endpoint:
 
@@ -335,7 +337,7 @@ GET /history
 Authorization: Bearer <PDF_API_TOKEN>
 ```
 
-It returns JSON metadata only, not the resume or job-description text. Entries are retained for 90 days and the endpoint returns up to 100 calls. History is best-effort: if a KV write fails, the PDF request still succeeds. The website's own **Print / PDF** and **Download DOCX** buttons are local exports and do not create history entries; only Worker PDF/MCP calls do.
+It returns JSON metadata only, not the resume or job-description text. Entries are retained for 90 days and the endpoint returns up to 100 calls. History is best-effort: if a KV write fails, the PDF request still succeeds. A successful tailoring run in the studio is also recorded in this browser's `localStorage` (metadata only: timestamp, target role, ATS score, selected project names, and mode; never the resume or job description), so browser runs appear alongside MCP/cloud calls. The website's own **Print / PDF** and **Download DOCX** buttons are local exports and do not add another entry.
 
 ## Two-page behavior
 
@@ -378,14 +380,14 @@ The Pages workflow only publishes `docs/`. It never receives the DeepSeek key. T
 ```text
 docs/
 ├── index.html              # App shell and modals
-├── history.html            # Cloud call history viewer
+├── history.html            # Browser + cloud tailoring history viewer
 ├── .nojekyll               # GitHub Pages: skip Jekyll
 ├── css/styles.css          # UI, resume paper, print styles
 ├── fonts/                  # Carlito (Calibri-metric) webfonts
 ├── favicon.svg
 └── js/
     ├── app.js              # UI controller
-    ├── history.js          # `/history` viewer; token in sessionStorage
+    ├── history.js          # Merged browser + `/history` viewer
     ├── ai.js               # DeepSeek client, prompt, plan validation
     ├── ats.js              # JD extraction and ATS scoring
     ├── tailor.js           # Local selection, plan materialization, text export
@@ -396,6 +398,9 @@ docs/
     ├── emphasis.js         # Capped JD-keyword bolding for existing bullets
     ├── jd-import.js        # Job-posting URL reader: DeepSeek via Worker or Jina
     ├── demo-data.js        # Public starter resume and sample JD
+    ├── domain-focus.js     # JD focus areas and resume evidence
+    ├── run-history.js      # Local run metadata in localStorage
+    ├── worker-token.js     # Persistent Worker token + sessionStorage migration
     ├── store.js            # localStorage persistence; memory-only API key
     ├── taxonomy.js         # Skill/keyword taxonomy
     ├── util.js
@@ -418,8 +423,8 @@ master/
 - When AI is enabled, the request contains the job description and the resume with phone, email, and link URLs removed; the name and link labels remain.
 - In **direct mode**, the API key is memory-only and is sent only to the configured endpoint as a bearer token. It is never stored in `localStorage` and is not prefilled after a reload.
 - In **secure proxy mode**, the browser sends the request to the Cloudflare Worker without the DeepSeek key. The Worker adds the key and forwards the request. The key is stored as a GitHub Actions secret and a Cloudflare Worker secret, never in `docs/` or browser storage. The proxy URL is saved in `localStorage`.
-- Loading a job URL in the static app sends that URL to the selected reader. When the Worker token is entered under **DeepSeek cloud reader**, the URL goes to your Cloudflare Worker and then to DeepSeek Fetch/Search. Without a token, the app uses Jina Reader (`r.jina.ai`), with a public read-only proxy (`allorigins.win`) and a direct fetch as fallbacks. Only the extracted job text is saved locally. Cloud PDF/MCP calls with `jobUrl` use the same DeepSeek path. The cloud-reader token is kept in `sessionStorage` for that tab and sent only to the Worker.
-- There is no account, cookie, or analytics. The optional Worker stores the private master in Workers KV, keeps temporary PDFs for 60 minutes, and keeps a 90-day history record containing the filename, company/role, ATS score, selected project names, mode, and temporary file ID. It does not retain job-description text.
+- Loading a job URL in the static app sends that URL to the selected reader. When the Worker token is entered under **DeepSeek cloud reader**, the URL goes to your Cloudflare Worker and then to DeepSeek Fetch/Search. Without a token, the app uses Jina Reader (`r.jina.ai`), with a public read-only proxy (`allorigins.win`) and a direct fetch as fallbacks. Only the extracted job text is saved locally. Cloud PDF/MCP calls with `jobUrl` use the same DeepSeek path. The Worker token is saved in `localStorage` and sent only to the configured Worker.
+- There is no account, cookie, or analytics. The optional Worker stores the private master in Workers KV, keeps temporary PDFs for 60 minutes, and keeps a 90-day history record containing the filename, company/role, ATS score, selected project names, source, mode, and temporary file ID. It does not retain job-description text. Browser tailoring runs are kept as metadata in `localStorage` and can be cleared from the History page or by clearing site data.
 - The public repository contains a starter resume. Do not commit a private master resume or an API key.
 
 ## Legacy FastAPI app
