@@ -405,7 +405,7 @@ HARD RULES:
 - For older roles, keep the strongest 3-5 bullets, ordered by relevance to the job.
 - Keep 2-3 bullets per selected project, ordered by relevance.
 - Keep 6-8 skill groups. Put JD-relevant existing skills first. Remove tools that are clearly unrelated, but never add a tool that is not already in the master resume.
-- The summary must be 2-4 sentences (<= 520 characters), mirror the target title honestly, and mention only facts and tools that exist in the master resume. Lead with the most recent role's JD-relevant, real work. Name the target title and 2-3 focus areas from focus_areas.supported_by_resume, even when the evidence comes from projects or older roles. Never claim a focus area from not_supported_by_resume.
+- The summary must be 2-4 sentences (<= 520 characters), mirror the target title honestly, and mention only facts and tools that exist in the master resume. Lead with the most recent role's JD-relevant, real work. Name the target title and 2-3 focus areas from focus_areas.supported_by_resume, even when the evidence comes from projects or older roles. Never claim a focus area from not_supported_by_resume. Drop junior-level words (Junior, Jr., Entry-Level, Associate, Intern, level I) from the title; the candidate has 5+ years of experience.
 - When the target role is a domain pivot, frame the summary around transferable evidence (for example forecasting, predictive maintenance, reliability, real-time monitoring, or operational dashboards) and do not pretend the candidate has domain experience that the master does not contain.
 - Prioritize the job's required/must-have terms over preferred terms.
 - Be honest about gaps. Never add a missing keyword such as TypeScript, AWS, or SQL unless it already appears in the master resume.

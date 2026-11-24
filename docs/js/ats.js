@@ -5,7 +5,7 @@ import {
   TAXONOMY,
 } from './taxonomy.js';
 import { extractFocusAreas, focusCoverage } from './domain-focus.js';
-import { compactTitle, normalizeText, unique } from './util.js';
+import { compactTitle, normalizeText, unique, withoutJuniorLevel } from './util.js';
 
 const SECTION_RE = /^(?:required|requirements|must[ -]?have|minimum qualifications|basic qualifications|what you(?:'|’)?ll need|qualifications|preferred|preferred qualifications|nice[ -]?to[ -]?have|bonus points|bonus|about the role|the role|responsibilities|what you(?:'|’)?ll do)\b/i;
 
@@ -202,7 +202,7 @@ export function titleMatchScore(jdTitle = '', master = {}) {
     master.summary || '',
   ].join(' ').toLowerCase();
   if (!jdTitle) return { score: 0.5, family: '', detail: 'No clear job title in the description.' };
-  const exact = normalizeForMatch(compactTitle(jdTitle, { maxWords: 7, maxChars: 60 }));
+  const exact = normalizeForMatch(withoutJuniorLevel(compactTitle(jdTitle, { maxWords: 7, maxChars: 60 })));
   if (exact.length >= 6 && normalizeForMatch(masterTitles).includes(exact)) {
     return { score: 1, family, detail: 'The exact job title appears in your summary or a role title.' };
   }

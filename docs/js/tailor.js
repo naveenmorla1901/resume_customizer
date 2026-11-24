@@ -2,7 +2,7 @@ import { TAXONOMY, CORE_SKILL_NAMES } from './taxonomy.js';
 import { analyzeJd, buildAtsReport, countTerm, extractUnknownTerms, resumeToText } from './ats.js';
 import { focusSentence, focusTermsFromJd } from './domain-focus.js';
 import { emphasizePlan } from './emphasis.js';
-import { compactTitle, joinNatural, normalizeText, unique } from './util.js';
+import { compactTitle, joinNatural, normalizeText, unique, withoutJuniorLevel } from './util.js';
 
 const TERM_BY_NAME = new Map(TAXONOMY.map((t) => [t.name.toLowerCase(), t]));
 
@@ -613,7 +613,7 @@ const ROLE_NOUN_RE = /\b(?:engineer|scientist|analyst|developer|architect|manage
 
 /** The JD's role title, compacted, or '' when it does not look like a role. */
 export function targetRoleTitle(jd = '') {
-  const title = compactTitle(analyzeJd(jd).title || '', { maxWords: 7, maxChars: 60 });
+  const title = withoutJuniorLevel(compactTitle(analyzeJd(jd).title || '', { maxWords: 7, maxChars: 60 }));
   return ROLE_NOUN_RE.test(title) ? title : '';
 }
 
@@ -628,6 +628,13 @@ export function mirrorJobTitle(plan, master, jd) {
   if (!title || !latest) return plan;
 
   let summary = normalizeText(plan.summary || '');
+  // Replace the posted title ("Junior Data Scientist") anywhere it appears
+  // with the cleaned one, so the junior wording never reaches the resume.
+  const posted = compactTitle(analyzeJd(jd).title || '', { maxWords: 7, maxChars: 60 });
+  if (posted && posted.toLowerCase() !== title.toLowerCase()) {
+    const escaped = posted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    summary = summary.replace(new RegExp(escaped, 'gi'), title);
+  }
   // The opening phrase may contain a comma or slash ("Data Scientist,
   // Business Intelligence with …") but never a sentence end or a number.
   const opening = /^([^.\d]{2,80}?)\s+with\s+/i;

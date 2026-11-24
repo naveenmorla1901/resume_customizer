@@ -143,6 +143,21 @@ export function compactTitle(value = '', { maxWords = 6, maxChars = 48 } = {}) {
     .trim();
 }
 
+/**
+ * Drop junior-level wording from a job title before it is reused on the
+ * resume: "Junior Data Scientist", "Jr. Data Scientist", "Entry-Level Data
+ * Scientist", "Associate Data Scientist", and "Data Scientist I" all become
+ * "Data Scientist". Senior and level II+ titles are kept.
+ */
+export function withoutJuniorLevel(title = '') {
+  const stripped = String(title || '')
+    .replace(/\b(?:junior|jr\.?|entry[- ]level|graduate|new[- ]grad|associate|intern(?:ship)?|trainee|apprentice)(?=\s|$)\s*/gi, '')
+    .replace(/[\s,-]+(?:I|1|level\s*(?:I|1))$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return /\w{3}/.test(stripped) ? stripped : String(title || '').trim();
+}
+
 export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

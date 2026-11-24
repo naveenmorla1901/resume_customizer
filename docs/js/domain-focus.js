@@ -6,7 +6,7 @@
  *
  * Keep the labels noun phrases so they can be dropped into a summary sentence.
  */
-import { compactTitle, joinNatural } from './util.js';
+import { compactTitle, joinNatural, withoutJuniorLevel } from './util.js';
 
 const FOCUS_AREAS = [
   {
@@ -205,7 +205,7 @@ export function focusTermsFromJd(jd = '', areas = [], limit = 8) {
 }
 
 export function focusSentence(analysis = {}) {
-  const title = compactTitle(analysis.title || '', { maxWords: 8, maxChars: 72 })
+  const title = withoutJuniorLevel(compactTitle(analysis.title || '', { maxWords: 8, maxChars: 72 }))
     .replace(/[.\s]+$/, '')
     .trim();
   const supported = Array.isArray(analysis.focusAreas) ? analysis.focusAreas : [];
