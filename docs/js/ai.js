@@ -16,6 +16,9 @@ export const DEFAULT_AI_SETTINGS = {
   // Allows JD-aligned wording for the summary and the latest role only.
   // Facts, metrics, and tools are still validated against the master resume.
   rewriteBullets: true,
+  // Applied after selection (local or DeepSeek): add the JD's missing
+  // keywords to Skills and the summary, even when the master lacks them.
+  addJdKeywords: true,
 };
 
 export class AiError extends Error {

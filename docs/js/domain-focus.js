@@ -177,6 +177,33 @@ export function focusCoverage(analysis = {}) {
   return total ? Math.round((supported / total) * 100) : null;
 }
 
+function displayTerm(value = '') {
+  const text = String(value).replace(/\s+/g, ' ').trim();
+  if (/^[a-z]{2,4}$/i.test(text) && !/^(?:power|data)$/i.test(text)) return text.toUpperCase();
+  return text.replace(/\b([a-z])/g, (letter) => letter.toUpperCase());
+}
+
+/**
+ * The JD's own wording for focus areas that the resume does not cover, such
+ * as "HVAC", "PUE", or "Critical Facilities", in the order the JD uses them.
+ */
+export function focusTermsFromJd(jd = '', areas = [], limit = 8) {
+  const text = String(jd || '');
+  const seen = new Set();
+  const terms = [];
+  for (const area of areas) {
+    const pattern = new RegExp(area.jd.source, 'gi');
+    for (const match of text.matchAll(pattern)) {
+      const term = displayTerm(match[0]);
+      const key = term.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      terms.push(term);
+    }
+  }
+  return terms.slice(0, limit);
+}
+
 export function focusSentence(analysis = {}) {
   const title = compactTitle(analysis.title || '', { maxWords: 8, maxChars: 72 })
     .replace(/[.\s]+$/, '')

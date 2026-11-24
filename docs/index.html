@@ -285,7 +285,8 @@
             <span class="api-status" id="api-status"></span>
           </div>
           <label class="check-line"><input id="setting-rewrite" type="checkbox"> Allow JD-aligned rewording of the summary and latest role (same facts only)</label>
-          <p class="mini-note" id="api-note">DeepSeek's JSON mode is used. Thinking is disabled for speed and predictable output. Missing tools are never invented; a keyword such as TypeScript is only shown if it exists in your resume.</p>
+          <label class="check-line"><input id="setting-add-keywords" type="checkbox"> Fill missing job keywords into Skills and the summary, even if they are not in my master resume</label>
+          <p class="mini-note" id="api-note">DeepSeek's JSON mode is used. Thinking is disabled for speed and predictable output. DeepSeek only selects and rewords existing content; missing job keywords are added afterwards only when the option above is on, and every added term is listed in the change notes.</p>
         </section>
         <section class="settings-section">
           <h3>Resume data</h3>

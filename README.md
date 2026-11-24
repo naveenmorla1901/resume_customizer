@@ -18,7 +18,8 @@ The app is plain HTML, CSS, and JavaScript in [`docs/`](docs/) and is deployed w
 - **Uses experimentation evidence honestly.** When a job asks for experimentation and the resume already documents A/B tests and hypothesis testing, the exact word is surfaced in the summary, skills, and the relevant older role. It is never inserted into a role that lacks that evidence.
 - **Picks and ranks the four best projects.** The master holds a 15-project library of public GitHub repos plus one private trading engine. Tailoring scores every project against the job description, keeps the four strongest in relevance order, and puts the strongest project first with a clickable GitHub link in the preview, plain text, PDF, and DOCX.
 - **Protects project keywords.** Projects and project bullets that are the only source of a JD keyword are ranked first, so trimming does not discard the only match.
-- **Explains ATS gaps.** Every missing keyword says whether it is in the master resume but was not selected, or absent from the resume entirely. Missing tools such as TypeScript are never added silently.
+- **Explains ATS gaps.** Every missing keyword says whether it is in the master resume but was not selected, or absent from the resume entirely.
+- **Fills missing job keywords (on by default).** After selection, keywords the job asks for but the master lacks are added to Technical Skills (in the matching group, or an *Additional Skills* group) and the top few to a "Working knowledge of …" summary sentence. Every added term is listed in the change notes and match report. Turn it off under **Settings → Fill missing job keywords** to keep the resume strictly to master content.
 - **Protects the two-page limit.** A fit pass measures the rendered preview and trims the summary and expendable content (older-role bullets, project bullets, lower-priority skill groups) until both pages fit with a safety margin. A fill pass then adds a small, capped amount of vertical spacing so neither page ends with a large empty block; the font size does not change.
 - **Produces ATS-friendly output.** Single-column text, real DOCX paragraphs and bullet lists, no text boxes or images, and a selectable-text PDF path.
 - **Works without AI.** Local tailoring deterministically scores, selects, and aligns existing content. DeepSeek is optional and can improve selection plus JD-aligned wording.
@@ -33,7 +34,7 @@ The app is plain HTML, CSS, and JavaScript in [`docs/`](docs/) and is deployed w
 5. **Fit and fill two pages.** The selected content is rendered in the exact page layout, measured, trimmed if necessary, then given a controlled amount of breathing room so both pages look full without changing the font.
 6. **Export.** Download a DOCX, print to PDF, or copy the plain text.
 
-The AI is deliberately constrained by its prompt: it may select, reorder, reword, and trim existing content, but not invent employers, dates, degrees, metrics, tools, or achievements. The app enforces those constraints on every bullet, project, and skill choice, and falls back to a local summary if the AI's summary adds an unknown number or technology term. If the AI call fails, the local plan is used instead.
+The AI is deliberately constrained by its prompt: it may select, reorder, reword, and trim existing content, but not invent employers, dates, degrees, metrics, tools, or achievements. The app enforces those constraints on every bullet, project, and skill choice, and falls back to a local summary if the AI's summary adds an unknown number or technology term. If the AI call fails, the local plan is used instead. The optional keyword fill runs after these checks, on both the AI and local plans.
 
 ## Use the app
 
@@ -56,7 +57,8 @@ For a PDF, use Letter paper, default margins, and 100% scale. Enable background 
 The score is a transparent heuristic, not an ATS vendor prediction. Missing keywords are labeled in two ways:
 
 - **In your master, not selected in this version** — the skill exists in the full master resume but was trimmed for space or relevance. Tailor again if you need it.
-- **Not in your resume — not auto-added** — the job asks for a skill the resume does not support. The app will not invent it. Add it only if you truly have that experience.
+- **Not in your resume — not auto-added** — the job asks for a skill the resume does not support, and keyword fill is off.
+- **Not in your resume — no room to add** — keyword fill is on, but the two-page limit trimmed the term.
 
 Terms outside the controlled skill taxonomy are listed separately for manual review. A keyword such as TypeScript appears only when the source resume actually contains it.
 

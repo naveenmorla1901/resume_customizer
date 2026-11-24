@@ -47,6 +47,7 @@ import {
 } from './jd-import.js';
 import { recordRun } from './run-history.js';
 import {
+  addJdKeywords,
   buildLocalPlan,
   defaultProjects,
   materializePlan,
@@ -336,6 +337,8 @@ function renderAts(baseReport, report) {
   setBadge($('ats-confidence'), `${report.confidence} confidence`, 'badge-muted');
 
   const matched = report.matched.filter((keyword) => keyword.score);
+  const fillKeywords = state.settings.addJdKeywords !== false;
+  const addedKeywords = Array.isArray(state.plan?.addedKeywords) ? state.plan.addedKeywords : [];
   const baseMatchedNames = new Set((baseReport?.matched || []).map((keyword) => keyword.name));
   const missing = report.missing
     .filter((keyword) => keyword.score)
@@ -351,7 +354,9 @@ function renderAts(baseReport, report) {
     18,
     (item) => [
       item.required ? 'required' : item.preferred ? 'preferred' : '',
-      item.inMaster ? 'in your master, not selected in this version' : 'not in your resume — not auto-added',
+      item.inMaster
+        ? 'in your master, not selected in this version'
+        : fillKeywords ? 'not in your resume — no room to add' : 'not in your resume — not auto-added',
     ].filter(Boolean).join(' · '),
   );
 
@@ -364,16 +369,23 @@ function renderAts(baseReport, report) {
   if (focusAreas.length) {
     parts.push(`Transferable focus supported by your resume: ${focusAreas.map((area) => area.label).join(', ')}.`);
   }
+  if (addedKeywords.length) {
+    parts.push(`Added from the job description (not in your master resume): ${addedKeywords.join(', ')}. Be ready to discuss these in an interview.`);
+  }
   if (unsupportedFocus.length) {
-    parts.push(`JD focus areas not supported by your resume: ${unsupportedFocus.map((area) => area.label).join(', ')}. These are not auto-added.`);
+    parts.push(`JD focus areas not supported by your resume: ${unsupportedFocus.map((area) => area.label).join(', ')}.${fillKeywords ? '' : ' These are not auto-added; turn on "Fill missing job keywords" in Settings to add them.'}`);
   }
   if (omitted.length) {
     parts.push(`Still in your master but not in this tailored version: ${omitted.map((k) => k.name).join(', ')}. Tailor again if the fit allows more room.`);
   }
   if (absent.length) {
     const required = absent.filter((keyword) => keyword.required).map((keyword) => keyword.name);
-    const label = required.length ? `Required by the JD but absent from your resume: ${required.join(', ')}.` : `Not in your resume, so not auto-added: ${absent.map((keyword) => keyword.name).join(', ')}.`;
-    parts.push(`${label} Add missing skills only if you truly have that experience.`);
+    if (fillKeywords) {
+      parts.push(`Still missing after filling job keywords (the two-page limit had no room): ${absent.map((keyword) => keyword.name).join(', ')}.`);
+    } else {
+      const label = required.length ? `Required by the JD but absent from your resume: ${required.join(', ')}.` : `Not in your resume, so not auto-added: ${absent.map((keyword) => keyword.name).join(', ')}.`;
+      parts.push(`${label} Turn on "Fill missing job keywords" in Settings to add them.`);
+    }
   }
   if (unknown.length) {
     parts.push(`Also review: ${unknown.join(', ')}. These are outside the controlled skill list, so they were not auto-added.`);
@@ -582,6 +594,7 @@ function syncSettingsUi() {
     setApiStatus(settings.apiKey ? 'Key loaded for this tab only. It is cleared on reload.' : 'No key in this tab.');
   }
   $('setting-rewrite').checked = settings.rewriteBullets !== false;
+  $('setting-add-keywords').checked = settings.addJdKeywords !== false;
   $('ai-toggle').checked = Boolean(settings.useAI);
   updateAiHint();
   updateMasterCard();
@@ -638,6 +651,7 @@ function saveSettingsFromForm() {
     endpoint: $('setting-endpoint').value.trim() || DEFAULT_AI_SETTINGS.endpoint,
     useAI: $('ai-toggle').checked,
     rewriteBullets: $('setting-rewrite').checked,
+    addJdKeywords: $('setting-add-keywords').checked,
   };
   saveSettings(state.settings);
   $('setting-key').value = '';
@@ -888,6 +902,10 @@ async function tailorResume() {
       }
       updateLoading('Selecting and aligning the strongest existing content…');
       nextPlan = buildLocalPlan(state.master, jd, baseReport);
+    }
+
+    if (state.settings.addJdKeywords !== false) {
+      nextPlan = addJdKeywords(nextPlan, state.master, jd);
     }
 
     updateLoading('Fitting the resume to two Letter pages…');

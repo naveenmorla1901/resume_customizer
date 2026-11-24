@@ -1,6 +1,6 @@
 import { TAXONOMY, CORE_SKILL_NAMES } from './taxonomy.js';
 import { analyzeJd, buildAtsReport, countTerm, resumeToText } from './ats.js';
-import { focusSentence } from './domain-focus.js';
+import { focusSentence, focusTermsFromJd } from './domain-focus.js';
 import { emphasizePlan } from './emphasis.js';
 import { joinNatural, normalizeText, unique } from './util.js';
 
@@ -122,18 +122,26 @@ const ALIGNMENT_RULES = [
   {
     label: 'reliable data pipelines',
     jd: /\b(?:reliability|data quality|pipelines?|etl|ingestion)\b/i,
-    source: /\bdata pipelines?\b/i,
-    target: 'reliable data pipelines',
-    already: /reliable data pipelines/i,
+    // Absorb an existing "scalable" so the result reads "reliable, scalable
+    // data pipelines" instead of "scalable reliable data pipelines".
+    source: /\b(scalable\s+)?(\*\*)?data (pipelines?)(\*\*)?/i,
+    target: (match, scalable, open = '', noun, close = '') => (
+      `${open || ''}reliable${scalable ? ', scalable' : ''} data ${noun}${close || ''}`
+    ),
+    already: /\breliable\b[^.]{0,24}data pipelines?/i,
   },
   {
     label: 'scalable APIs',
     jd: /\b(?:apis?|microservices?|scalab(?:le|ility)|services?)\b/i,
     // The master bolds "FastAPI" and may already say "high performance", so
-    // match both forms and carry the emphasis through the rewrite.
+    // match both forms and carry the emphasis through the rewrite. Skip the
+    // extra "scalable" when the bullet already uses the word elsewhere.
     source: /(?:high[- ]performance\s+)?(\*\*FastAPI\*\*|\bFastAPI\b) endpoints?/i,
-    target: 'scalable, high-performance $1 endpoints',
-    already: /scalable, high-performance (?:\*\*)?FastAPI(?:\*\*)? endpoints/i,
+    target: (match, tool, offset, whole) => {
+      const rest = `${whole.slice(0, offset)}${whole.slice(offset + match.length)}`;
+      return `${/\bscalable\b/i.test(rest) ? '' : 'scalable, '}high-performance ${tool} endpoints`;
+    },
+    already: /high-performance (?:\*\*)?FastAPI(?:\*\*)? endpoints/i,
   },
   {
     label: 'statistical modeling / machine learning',
@@ -599,6 +607,105 @@ export function buildLocalPlan(master, jd, report = null) {
     alignment: aligned.changes,
     notes,
   }, analysis);
+}
+
+const MAX_ADDED_KEYWORDS = 14;
+const MAX_SUMMARY_KEYWORDS = 5;
+const ADDITIONAL_GROUP = 'Additional Skills';
+
+function insertAfterTargetSentence(summary = '', sentence = '') {
+  const text = normalizeText(summary);
+  if (!text) return sentence;
+  // Split only at a sentence end followed by a capital so "Node.js" stays whole.
+  const sentences = text.split(/(?<=[.!?])\s+(?=[A-Z])/);
+  const targetIndex = sentences.findIndex((item) => /^Targeting\b/i.test(item));
+  const at = targetIndex >= 0 ? targetIndex + 1 : Math.min(1, sentences.length);
+  sentences.splice(at, 0, sentence);
+  return normalizeText(sentences.join(' '));
+}
+
+/**
+ * Fill the job's missing keywords into the skills section and the summary,
+ * including terms the master resume does not contain. This is opt-out
+ * (Settings) because it trades strict factuality for ATS coverage; the plan
+ * notes list every added term so the user can review it before applying.
+ */
+export function addJdKeywords(plan, master, jd) {
+  const report = buildAtsReport(materializePlan(master, plan), jd);
+  const resumeText = String(report.resumeText || '').toLowerCase();
+  const missing = (report.missing || []).filter((keyword) => keyword.score !== false);
+  const missingNames = new Set(missing.map((keyword) => keyword.name.toLowerCase()));
+  const focusTerms = focusTermsFromJd(jd, report.unsupportedFocus || [])
+    .filter((term) => !missingNames.has(term.toLowerCase()) && !resumeText.includes(term.toLowerCase()));
+  if (!missing.length && !focusTerms.length) return plan;
+
+  const matchedTerms = (report.matched || [])
+    .map((keyword) => TERM_BY_NAME.get(keyword.name.toLowerCase()))
+    .filter(Boolean);
+  const isMatched = (item) => matchedTerms.some((term) => countTerm(item, term) > 0);
+  const skills = (plan.skills || []).map((group) => ({ label: group.label, items: [...(group.items || [])] }));
+  const additions = new Map();
+  const added = [];
+
+  const queue = (label, name) => {
+    const existing = skills.find((group) => group.label === label);
+    const targetLabel = existing ? label : ADDITIONAL_GROUP;
+    const items = skills.find((group) => group.label === targetLabel)?.items || [];
+    if (items.some((item) => item.toLowerCase() === name.toLowerCase())) return;
+    if (!additions.has(targetLabel)) additions.set(targetLabel, []);
+    const list = additions.get(targetLabel);
+    if (list.some((item) => item.toLowerCase() === name.toLowerCase())) return;
+    list.push(name);
+    added.push(name);
+  };
+
+  for (const keyword of missing.slice(0, MAX_ADDED_KEYWORDS)) {
+    queue(GROUP_FOR_CATEGORY[keyword.category] || ADDITIONAL_GROUP, keyword.name);
+  }
+  for (const term of focusTerms) {
+    if (added.length >= MAX_ADDED_KEYWORDS + 4) break;
+    queue(ADDITIONAL_GROUP, term);
+  }
+  if (!added.length) return plan;
+
+  if (additions.has(ADDITIONAL_GROUP) && !skills.some((group) => group.label === ADDITIONAL_GROUP)) {
+    // Place the new group right after Languages so the two-page fitter, which
+    // drops groups from the end, keeps it.
+    const at = skills[0]?.label === 'Languages' ? 1 : 0;
+    skills.splice(at, 0, { label: ADDITIONAL_GROUP, items: [] });
+  }
+  for (const group of skills) {
+    const extra = additions.get(group.label);
+    if (!extra) continue;
+    // Matched items stay first; added terms go next, ahead of unmatched items,
+    // so the fitter trims unrelated tools before the new job keywords.
+    const matchedItems = group.items.filter(isMatched);
+    const rest = group.items.filter((item) => !isMatched(item));
+    group.items = [...matchedItems, ...extra, ...rest];
+  }
+
+  const summaryTerms = unique([
+    ...missing.filter((keyword) => keyword.required).map((keyword) => keyword.name),
+    ...focusTerms,
+    ...missing.map((keyword) => keyword.name),
+  ]).filter((name) => added.includes(name)).slice(0, MAX_SUMMARY_KEYWORDS)
+    // Tool names keep their casing; generic JD phrases such as "Cooling" read
+    // better in lower case inside a sentence. Acronyms stay upper case.
+    .map((name) => (focusTerms.includes(name) && name !== name.toUpperCase() ? name.toLowerCase() : name));
+  const summary = summaryTerms.length
+    ? insertAfterTargetSentence(plan.summary, `Working knowledge of ${joinNatural(summaryTerms)}.`)
+    : plan.summary;
+
+  return {
+    ...plan,
+    summary,
+    skills,
+    addedKeywords: added,
+    notes: [
+      ...(plan.notes || []),
+      `Added ${added.length} job keyword${added.length === 1 ? '' : 's'} that ${added.length === 1 ? 'is' : 'are'} not in your master resume: ${added.join(', ')}. Review them and be ready to discuss them in an interview.`,
+    ],
+  };
 }
 
 export function normalizePlan(plan = {}, master = {}) {
