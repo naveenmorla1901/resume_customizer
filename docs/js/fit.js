@@ -50,7 +50,12 @@ function reduceExperience(plan, changes) {
       return true;
     }
   }
-  const latestMin = roles[0].bullets.length > 4 ? 4 : 2;
+  // Bullets written from the JD lead the latest role; keep at least two of
+  // the role's own bullets beneath them.
+  const jdLead = roles[0].jdLead || 0;
+  const floor = Math.max(4, jdLead + 2);
+  const hardMin = jdLead ? jdLead + 1 : 2;
+  const latestMin = roles[0].bullets.length > floor ? floor : Math.min(roles[0].bullets.length, hardMin);
   if (roles[0].bullets.length > latestMin) {
     roles[0].bullets.pop();
     changes.experienceTrimmed += 1;

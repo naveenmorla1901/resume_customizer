@@ -50,7 +50,9 @@ import {
   addJdKeywords,
   buildLocalPlan,
   defaultProjects,
+  leadLatestRoleWithJd,
   mirrorJobTitle,
+  scrubRecruiterNoise,
   materializePlan,
   planStats,
 } from './tailor.js';
@@ -599,6 +601,7 @@ function syncSettingsUi() {
   $('setting-rewrite').checked = settings.rewriteBullets !== false;
   $('setting-add-keywords').checked = settings.addJdKeywords !== false;
   $('setting-mirror-title').checked = settings.mirrorJobTitle !== false;
+  $('setting-lead-bullets').checked = settings.leadWithJdBullets !== false;
   $('ai-toggle').checked = Boolean(settings.useAI);
   updateAiHint();
   updateMasterCard();
@@ -657,6 +660,7 @@ function saveSettingsFromForm() {
     rewriteBullets: $('setting-rewrite').checked,
     addJdKeywords: $('setting-add-keywords').checked,
     mirrorJobTitle: $('setting-mirror-title').checked,
+    leadWithJdBullets: $('setting-lead-bullets').checked,
   };
   saveSettings(state.settings);
   $('setting-key').value = '';
@@ -908,9 +912,13 @@ async function tailorResume() {
     if (state.settings.mirrorJobTitle !== false) {
       nextPlan = mirrorJobTitle(nextPlan, state.master, jd);
     }
+    if (state.settings.leadWithJdBullets !== false) {
+      nextPlan = leadLatestRoleWithJd(nextPlan, state.master, jd);
+    }
     if (state.settings.addJdKeywords !== false) {
       nextPlan = addJdKeywords(nextPlan, state.master, jd);
     }
+    nextPlan = scrubRecruiterNoise(nextPlan);
 
     updateLoading('Fitting the resume to two Letter pages…');
     await nextFrame();

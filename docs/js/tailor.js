@@ -1,7 +1,8 @@
 import { TAXONOMY, CORE_SKILL_NAMES } from './taxonomy.js';
 import { analyzeJd, buildAtsReport, countTerm, extractUnknownTerms, resumeToText } from './ats.js';
 import { focusSentence, focusTermsFromJd } from './domain-focus.js';
-import { emphasizePlan } from './emphasis.js';
+import { emphasizeBullets, emphasizePlan } from './emphasis.js';
+import { responsibilityBullets } from './jd-bullets.js';
 import { compactTitle, joinNatural, normalizeText, unique, withoutJuniorLevel } from './util.js';
 
 const TERM_BY_NAME = new Map(TAXONOMY.map((t) => [t.name.toLowerCase(), t]));
@@ -643,6 +644,7 @@ export function mirrorJobTitle(plan, master, jd) {
   // sentence would only repeat it.
   summary = summary
     .replace(/\bTargeting (?:this role|.+? roles), with transferable evidence in /, 'Core strengths include ')
+    .replace(/\bTargeting an? [^.]{2,80}? (?:role|position)s? (?:spanning|focused on|across|in|with|that spans)\s+/i, 'Core strengths span ')
     .replace(/\s*\bTargeting (?:this role|.+? roles)\.\s*/, ' ')
     .trim();
 
@@ -654,6 +656,52 @@ export function mirrorJobTitle(plan, master, jd) {
     notes.push(`Used the job title "${title}" in the summary and as the latest role title (was "${latest.title}").`);
   }
   return { ...plan, summary, experience, notes };
+}
+
+const JD_LEAD_BULLETS = 3;
+
+/**
+ * Lead the latest role with up to three bullets written from the JD's own
+ * responsibility lines, so a recruiter sees the job's language in the first
+ * lines of the most recent role. Opt-out in Settings.
+ */
+export function leadLatestRoleWithJd(plan, master, jd) {
+  const latest = (master.experience || [])[0];
+  if (!latest) return plan;
+  const experience = (plan.experience || []).map((role) => ({ ...role, bullets: [...(role.bullets || [])] }));
+  const entry = experience.find((role) => role.id === latest.id);
+  if (!entry) return plan;
+
+  const lead = responsibilityBullets(jd, { existing: entry.bullets, limit: JD_LEAD_BULLETS });
+  if (!lead.length) return plan;
+  const keywords = analyzeJd(jd).keywords.map((keyword) => ({ ...keyword, matched: true }));
+  entry.bullets = [...emphasizeBullets(lead, keywords), ...entry.bullets];
+  entry.jdLead = lead.length;
+  return {
+    ...plan,
+    experience,
+    notes: [
+      ...(plan.notes || []),
+      `Led the latest role with ${lead.length} bullet${lead.length === 1 ? '' : 's'} written from the job description's responsibilities. Review them and be ready to discuss them in an interview.`,
+    ],
+  };
+}
+
+// Recruiter-email wording that must never reach the resume, even if the AI
+// or the title extractor picked it up from a pasted email.
+const RECRUITER_NOISE_RE = /\b(?:(?:urgent(?:ly)?|immediate(?:ly)?|hot|now)\s+(?:hiring|requirement|opening|need)|urgent(?:ly)?\s+need(?:ed)?|job\s+alert)\b\s*(?:for\s+)?[:\-–—|!]*\s*/gi;
+
+export function scrubRecruiterNoise(plan) {
+  const scrub = (text) => normalizeText(String(text || '').replace(RECRUITER_NOISE_RE, ''));
+  return {
+    ...plan,
+    summary: scrub(plan.summary),
+    experience: (plan.experience || []).map((role) => ({
+      ...role,
+      ...(role.title ? { title: scrub(role.title) } : {}),
+      bullets: (role.bullets || []).map(scrub),
+    })),
+  };
 }
 
 // Tool-like JD terms outside the taxonomy: short, every word capitalized

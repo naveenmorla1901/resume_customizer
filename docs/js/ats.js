@@ -131,26 +131,56 @@ function looksLikeTitle(line = '') {
   return value.split(/\s+/).filter(Boolean).length <= 7;
 }
 
+// Recruiter-email wrappers around a title: "Subject: Fwd: Urgent Hiring: AI
+// Lead", "Hot Requirement – Data Scientist", "We are hiring a Data Engineer".
+const RECRUITER_PREFIX_RE = /^(?:(?:subject|re|fwd?|fw)\s*:\s*)*(?:(?:urgent(?:ly)?|immediate(?:ly)?|hot|new|now|direct[ -]client|asap|exciting|great)\s+)*(?:hiring(?:\s+for)?|requirement(?:\s+for)?|req(?:\s+for)?|opening(?:\s+for)?|job\s+opening(?:\s+for)?|opportunity(?:\s+for)?|job\s+opportunity(?:\s+for)?|need(?:\s+for)?|position(?:\s+for)?|looking\s+for|we\s*(?:'re|\s+are)\s+(?:hiring|looking\s+for)|job\s+alert)\b\s*(?:an?\s+)?[:\-–—|!]*\s*/i;
+const NOISE_ONLY_RE = /^(?:urgent(?:ly)?|immediate(?:ly)?|asap|hot|hiring|now hiring|urgent hiring|immediate hiring|urgent requirement|hot requirement|job alert|new opportunity|[\s!:\-–—|])*$/i;
+const GREETING_RE = /^(?:hi|hello|hey|dear|greetings|good\s+(?:morning|afternoon|evening)|hope\s+you|i\s+hope|my\s+name\s+is|this\s+is|thanks|thank\s+you|regards|best)\b/i;
+
+function stripRecruiterNoise(line = '') {
+  let value = String(line || '').trim();
+  for (let i = 0; i < 3; i += 1) {
+    const next = value
+      .replace(RECRUITER_PREFIX_RE, '')
+      .replace(/^(?:urgent(?:ly)?|immediate(?:ly)?|asap|hot)\s*[:\-–—|!]+\s*/i, '')
+      .replace(/\s*(?:[-–—|:(!]\s*)+(?:urgent(?:ly)?|immediate(?:ly)?|asap|hot|immediate\s+joiners?|need(?:ed)?\s+asap)\b.*$/i, '')
+      .trim();
+    if (next === value) break;
+    // A stripped sentence ("We are hiring a Data Engineer for our client.")
+    // keeps only the title part.
+    value = next
+      .replace(/\s+(?:for|at|with|to\s+join|in|on)\s+(?:our|a|an|the|one\s+of|my|their|its)\b.*$/i, '')
+      .replace(/[.!]+$/, '')
+      .trim();
+  }
+  return NOISE_ONLY_RE.test(value) ? '' : value;
+}
+
 export function extractJobTitle(jd = '') {
   const text = String(jd).trim();
   if (!text) return '';
   const explicit = text.match(/(?:job title|position|role)\s*[:\-–—]\s*([^\n]{3,90})/i);
   const lines = text
     .split(/\r?\n/)
-    .map((line) => line
+    .map((line) => stripRecruiterNoise(line
       .replace(/^\s*(?:[-•](?=\s)|\*(?=\s)|\d+\.(?=\s))\s*/, '')
       .replace(/^\s*#{1,6}\s*/, '')
       .replace(/\*\*([^*\n]+)\*\*/g, '$1')
-      .trim())
+      .trim()))
     .filter(Boolean);
-  const titleLines = lines.slice(0, 80).filter((line) => line.length <= 100 && !GENERIC_HEADING_RE.test(line));
+  const titleLines = lines.slice(0, 80).filter((line) => (
+    line.length <= 100 && !GENERIC_HEADING_RE.test(line) && !GREETING_RE.test(line)
+  ));
   const known = titleLines.find((line) => {
     const lower = line.toLowerCase();
     return looksLikeTitle(line) && ROLE_TITLES.some((t) => lower.startsWith(t));
   });
-  const fallback = titleLines.find(looksLikeTitle) || '';
-  let title = explicit?.[1] || known || fallback;
-  title = title
+  const roleNoun = /\b(?:engineer|scientist|analyst|developer|architect|manager|specialist|consultant|lead|operator|technician|administrator|researcher|director|coordinator|strategist|statistician|programmer)s?\b/i;
+  const fallback = titleLines.find((line) => looksLikeTitle(line) && roleNoun.test(line))
+    || titleLines.find(looksLikeTitle)
+    || '';
+  let title = stripRecruiterNoise(explicit?.[1] || '') || known || fallback;
+  title = stripRecruiterNoise(title)
     .replace(/^(?:job title|position|role)\s*[:\-–—]\s*/i, '')
     .split(/[|•]/)[0]
     .replace(/\s*[—–-]\s*(?:remote|hybrid|onsite|on-site|contract|full[ -]time|part[ -]time).*$/i, '')
