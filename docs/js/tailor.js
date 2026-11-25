@@ -2,7 +2,7 @@ import { TAXONOMY, CORE_SKILL_NAMES } from './taxonomy.js';
 import { analyzeJd, buildAtsReport, countTerm, extractUnknownTerms, resumeToText } from './ats.js';
 import { focusSentence, focusTermsFromJd } from './domain-focus.js';
 import { emphasizeBullets, emphasizePlan } from './emphasis.js';
-import { responsibilityBullets } from './jd-bullets.js';
+import { responsibilityBullets, scalePhrases } from './jd-bullets.js';
 import { compactTitle, joinNatural, normalizeText, unique, withoutJuniorLevel } from './util.js';
 
 const TERM_BY_NAME = new Map(TAXONOMY.map((t) => [t.name.toLowerCase(), t]));
@@ -619,9 +619,9 @@ export function targetRoleTitle(jd = '') {
 }
 
 /**
- * Use the job's own title as the summary's opening phrase and as the latest
- * role's title. Recruiters and ATS title filters key on this phrase. Opt-out
- * in Settings; the company and dates are never changed.
+ * Use the job's own title as the summary's opening phrase. Recruiters and ATS
+ * title filters key on this phrase. Role titles are never changed, because
+ * background checks verify them. Opt-out in Settings.
  */
 export function mirrorJobTitle(plan, master, jd) {
   const title = targetRoleTitle(jd);
@@ -648,14 +648,11 @@ export function mirrorJobTitle(plan, master, jd) {
     .replace(/\s*\bTargeting (?:this role|.+? roles)\.\s*/, ' ')
     .trim();
 
-  const experience = (plan.experience || []).map((role) => (
-    role.id === latest.id ? { ...role, title } : role
-  ));
   const notes = [...(plan.notes || [])];
   if (normalizeText(latest.title).toLowerCase() !== title.toLowerCase()) {
-    notes.push(`Used the job title "${title}" in the summary and as the latest role title (was "${latest.title}").`);
+    notes.push(`Opened the summary with the job title "${title}". Your latest role keeps its real title ("${latest.title}") so it matches employment verification.`);
   }
-  return { ...plan, summary, experience, notes };
+  return { ...plan, summary, notes };
 }
 
 const JD_LEAD_BULLETS = 3;
@@ -672,7 +669,16 @@ export function leadLatestRoleWithJd(plan, master, jd) {
   const entry = experience.find((role) => role.id === latest.id);
   if (!entry) return plan;
 
-  const lead = responsibilityBullets(jd, { existing: entry.bullets, limit: JD_LEAD_BULLETS });
+  // DeepSeek's paraphrased bullets are preferred; the rule-based version is
+  // the fallback for local tailoring or when DeepSeek returned none.
+  const aiLead = (plan.jdBullets || []).slice(0, JD_LEAD_BULLETS);
+  const lead = aiLead.length
+    ? aiLead
+    : responsibilityBullets(jd, {
+      existing: entry.bullets,
+      limit: JD_LEAD_BULLETS,
+      scales: scalePhrases(latest.bullets || []),
+    });
   if (!lead.length) return plan;
   const keywords = analyzeJd(jd).keywords.map((keyword) => ({ ...keyword, matched: true }));
   entry.bullets = [...emphasizeBullets(lead, keywords), ...entry.bullets];
@@ -682,7 +688,7 @@ export function leadLatestRoleWithJd(plan, master, jd) {
     experience,
     notes: [
       ...(plan.notes || []),
-      `Led the latest role with ${lead.length} bullet${lead.length === 1 ? '' : 's'} written from the job description's responsibilities. Review them and be ready to discuss them in an interview.`,
+      `Led the latest role with ${lead.length} bullet${lead.length === 1 ? '' : 's'} ${aiLead.length ? 'DeepSeek wrote' : 'written'} from the job description's responsibilities, using its keywords in new wording. Review them and be ready to discuss them in an interview.`,
     ],
   };
 }

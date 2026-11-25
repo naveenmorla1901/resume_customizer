@@ -70,6 +70,75 @@ const OTHER_HEADING_RE = /^(?:requirements|required|qualifications|minimum|basic
 
 const TERMS = TAXONOMY.filter((term) => term.score !== false);
 
+// Swap the opening verb so a bullet does not read as the JD's sentence.
+const VERB_SYNONYMS = {
+  designed: 'Architected', built: 'Engineered', developed: 'Built', deployed: 'Shipped',
+  led: 'Spearheaded', partnered: 'Collaborated', collaborated: 'Partnered', created: 'Developed',
+  implemented: 'Delivered', managed: 'Owned', monitored: 'Tracked', analyzed: 'Evaluated',
+  evaluated: 'Assessed', optimized: 'Improved', improved: 'Enhanced', maintained: 'Operated',
+  mentored: 'Coached', established: 'Instituted', defined: 'Shaped', drove: 'Led',
+  worked: 'Partnered', supported: 'Enabled', automated: 'Streamlined', conducted: 'Ran',
+  performed: 'Executed', researched: 'Investigated', translated: 'Converted', owned: 'Led',
+};
+
+/**
+ * Real scale phrases from the latest role ("50,000+ active cases", "15+
+ * leadership stakeholders"). Percentages are outcomes of one specific bullet,
+ * so they are never moved onto another bullet.
+ */
+export function scalePhrases(bullets = []) {
+  const text = bullets.join(' ').replace(/\*\*/g, '');
+  const seen = new Set();
+  const phrases = [];
+  for (const match of text.matchAll(/(\d[\d,]*\+?)\s+((?:[A-Za-z-]+\s+){0,3}[A-Za-z-]+)/g)) {
+    const number = match[1];
+    if (seen.has(number)) continue;
+    const words = match[2].split(/\s+/);
+    const end = words.map((word) => /(?:s|KPIs)$/.test(word) && !/^(?:across|across|years?|is|was|has)$/i.test(word)).lastIndexOf(true);
+    if (end < 0) continue;
+    const stop = words.slice(0, end + 1).findIndex((word) => /^(?:across|for|to|and|with|by|in|of|from)$/i.test(word));
+    const kept = words.slice(0, stop >= 0 ? stop : end + 1);
+    if (!kept.length || !/(?:s|KPIs)$/.test(kept[kept.length - 1])) continue;
+    seen.add(number);
+    phrases.push(`${number} ${kept.join(' ')}`);
+  }
+  return phrases;
+}
+
+const PEOPLE_SCALE_RE = /\b(?:stakeholders?|leaders?|users?|clients?|customers?|teams?|members?)\b/i;
+const PEOPLE_WORK_RE = /\b(?:partner\w*|collaborat\w*|stakeholders?|roadmap|present\w*|communicat\w*|align\w*|requirements|strategy|leadership)\b/i;
+const DATA_WORK_RE = /\b(?:data|models?|pipelines?|workflows?|systems?|llms?|analytics|automat\w*|deploy\w*|forecast\w*|dashboards?|platforms?|apis?|agents?|rag|monitor\w*|insights?)\b/i;
+const NO_SCALE_RE = /\b(?:mentor\w*|coach\w*|hir\w*|recruit\w*|interview\w*|onboard\w*)\b/i;
+
+/**
+ * Attach each real scale phrase to the bullet it fits: stakeholder counts to
+ * collaboration work, case or data counts to data and model work. A phrase is
+ * used at most once; people-management bullets never get one.
+ */
+function attachScales(bullets, scales) {
+  const unused = [...scales];
+  return bullets.map((bullet) => {
+    if (/\d/.test(bullet) || NO_SCALE_RE.test(bullet)) return bullet;
+    const wantsPeople = PEOPLE_WORK_RE.test(bullet);
+    const wantsData = DATA_WORK_RE.test(bullet);
+    const index = unused.findIndex((phrase) => (
+      PEOPLE_SCALE_RE.test(phrase) ? wantsPeople : wantsData && !wantsPeople
+    ));
+    if (index < 0) return bullet;
+    const phrase = unused[index];
+    if (bullet.length + phrase.length > 225) return bullet;
+    unused.splice(index, 1);
+    return `${bullet}${PEOPLE_SCALE_RE.test(phrase) ? ', supporting ' : ', across '}${phrase}`;
+  });
+}
+
+function paraphraseVerb(bullet) {
+  const first = bullet.split(/\s+/)[0] || '';
+  const match = /^([A-Za-z-]+)(.*)$/.exec(first);
+  const swap = match && VERB_SYNONYMS[match[1].toLowerCase()];
+  return swap ? `${swap}${match[2]}${bullet.slice(first.length)}` : bullet;
+}
+
 function keywordHits(text) {
   let hits = 0;
   for (const term of TERMS) if (countTerm(text, term) > 0) hits += 1;
@@ -139,7 +208,7 @@ function overlaps(a, b) {
  * @param {{existing?: string[], limit?: number}} opts
  * @returns {string[]} up to `limit` past-tense bullets, most JD-relevant first
  */
-export function responsibilityBullets(jd = '', { existing = [], limit = 3 } = {}) {
+export function responsibilityBullets(jd = '', { existing = [], limit = 3, scales = [] } = {}) {
   const candidates = [];
   let inResponsibilities = false;
   String(jd || '').split(/\r?\n/).forEach((rawLine, index) => {
@@ -159,7 +228,7 @@ export function responsibilityBullets(jd = '', { existing = [], limit = 3 } = {}
     const bullet = toPastTense(line);
     if (!bullet) return;
     const score = keywordHits(bullet) + (inResponsibilities ? 2 : 0);
-    candidates.push({ bullet: `${bullet}.`, score, index });
+    candidates.push({ bullet, score, index });
   });
 
   const picked = [];
@@ -168,5 +237,5 @@ export function responsibilityBullets(jd = '', { existing = [], limit = 3 } = {}
     if ([...existing, ...picked].some((other) => overlaps(other, candidate.bullet))) continue;
     picked.push(candidate.bullet);
   }
-  return picked;
+  return attachScales(picked.map(paraphraseVerb), scales).map((bullet) => `${bullet}.`);
 }
