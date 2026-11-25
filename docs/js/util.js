@@ -158,6 +158,34 @@ export function withoutJuniorLevel(title = '') {
   return /\w{3}/.test(stripped) ? stripped : String(title || '').trim();
 }
 
+const TITLE_ABBREVIATIONS = [
+  [/\bmachine learning\b/gi, 'ML'],
+  [/\bartificial intelligence\b/gi, 'AI'],
+  [/\bgenerative ai\b/gi, 'GenAI'],
+  [/\bnatural language processing\b/gi, 'NLP'],
+  [/\bbusiness intelligence\b/gi, 'BI'],
+  [/\bsenior\b/gi, 'Sr'],
+  [/\boperations\b/gi, 'Ops'],
+  [/\bengineering\b/gi, 'Eng'],
+];
+
+/**
+ * A short role label for export filenames: "Machine Learning Software
+ * Engineer I, AI Applications (R12345)" -> "ML Software Engineer". Cuts at the
+ * first comma, bracket, dash, or pipe, drops levels and reference codes,
+ * abbreviates common phrases, and keeps at most four short words.
+ */
+export function shortRoleTitle(value = '', { maxWords = 4, maxChars = 26 } = {}) {
+  let title = withoutJuniorLevel(compactTitle(String(value || '').replace(/\[[^\]]*\]/g, ' '), { maxWords: 8, maxChars: 80 }));
+  for (const [pattern, short] of TITLE_ABBREVIATIONS) title = title.replace(pattern, short);
+  const words = title
+    .split(/\s+/)
+    .filter((word) => word && !/\d/.test(word) && !/^(?:I{1,3}|IV|V)$/.test(word));
+  let out = words.slice(0, maxWords).join(' ');
+  while (out.length > maxChars && out.includes(' ')) out = out.slice(0, out.lastIndexOf(' '));
+  return out.replace(/\s+(?:and|or|for|with|of|the|a|an|&)$/i, '').trim();
+}
+
 export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

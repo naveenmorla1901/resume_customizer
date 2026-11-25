@@ -635,14 +635,54 @@ function sanitizeFilename(value, fallback) {
   return `${base || fallback}.pdf`;
 }
 
-function pdfFilename(company, requested) {
-  const safe = String(company || '')
-    .replace(/[^a-z0-9]+/gi, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 40);
-  const date = new Date().toISOString().slice(0, 10);
-  const fallback = `Naveen_Morla_Resume${safe ? `_${safe}` : ''}_${date}`;
-  return sanitizeFilename(requested, fallback);
+const FILENAME_ABBREVIATIONS = [
+  [/\bmachine[ _]learning\b/gi, 'ML'],
+  [/\bartificial[ _]intelligence\b/gi, 'AI'],
+  [/\bgenerative[ _]ai\b/gi, 'GenAI'],
+  [/\bnatural[ _]language[ _]processing\b/gi, 'NLP'],
+  [/\bbusiness[ _]intelligence\b/gi, 'BI'],
+  [/\bsenior\b/gi, 'Sr'],
+  [/\boperations\b/gi, 'Ops'],
+  [/\bengineering\b/gi, 'Eng'],
+];
+const MAX_FILENAME_CHARS = 40;
+const ROLE_WORD_RE = /^(?:engineer|scientist|analyst|developer|architect|manager|specialist|consultant|lead|researcher|director|programmer|administrator|technician)s?$/i;
+
+/**
+ * Keep upload filenames short: job titles often carry a level, a team, and a
+ * req ID ("Machine Learning Software Engineer I, AI Applications (R12345)").
+ * Drop bracketed text, anything after a comma, numbers, dates, and levels,
+ * abbreviate common phrases, and cap the length at a word boundary.
+ */
+function shortenFilenameBase(value = '') {
+  let text = String(value || '')
+    .replace(/\.pdf$/i, '')
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
+    .split(/,|\s\|\s/)[0]
+    .replace(/_+/g, ' ');
+  for (const [pattern, short] of FILENAME_ABBREVIATIONS) text = text.replace(pattern, short);
+  const words = text
+    .replace(/[^a-z0-9 ]+/gi, ' ')
+    .split(/\s+/)
+    .filter((word) => word
+      && !/\d/.test(word)
+      && !/^(?:I{1,3}|IV|V|resume|cv|junior|jr|entry|level|associate|intern)$/i.test(word));
+  // End right after the role word so a trailing team name ("AI
+  // Applications") is dropped.
+  const roleEnd = words.reduce((last, word, index) => (
+    ROLE_WORD_RE.test(word) && words.slice(0, index + 1).join('_').length <= MAX_FILENAME_CHARS ? index : last
+  ), -1);
+  let out = (roleEnd >= 0 ? words.slice(0, roleEnd + 1) : words).join('_');
+  while (out.length > MAX_FILENAME_CHARS && out.includes('_')) out = out.slice(0, out.lastIndexOf('_'));
+  return out;
+}
+
+function pdfFilename(company, requested, jobTitle = '') {
+  const label = shortenFilenameBase(jobTitle).split('_').slice(0, 3).join('_')
+    || shortenFilenameBase(company).split('_').slice(0, 2).join('_');
+  const fallback = `Naveen_Morla${label ? `_${label}` : '_Resume'}`;
+  const short = shortenFilenameBase(requested);
+  return sanitizeFilename(short || '', fallback);
 }
 
 async function loadStoredMaster(env) {
@@ -818,7 +858,7 @@ function createResumeMcpServer(env, baseUrl) {
       'If the user only has a link, pass jobUrl; the Worker reads the page with DeepSeek Fetch and falls back to Search when the page is too thin.',
       'Pass the full job description when available; jobUrl is a fallback for thin or unavailable text.',
       'The resume is built from Naveen Morla\'s stored master resume and keeps the existing two-page layout, fonts, and clickable project links.',
-      'Pass filename when the user asks for a specific output filename; the .pdf extension is added automatically.',
+      'Pass filename only when the user asks for a specific one; keep it short (for example "Naveen_Morla_ML_Engineer"), without levels, req IDs, team names, or dates. Long names are shortened automatically and the .pdf extension is added.',
       'DeepSeek tailoring is on by default; pass ai=false only when the user asks for fast, deterministic local tailoring.',
     ].join(' '),
     inputSchema: z.object({
@@ -827,12 +867,12 @@ function createResumeMcpServer(env, baseUrl) {
       jobTitle: z.string().max(120).optional().describe('Job title, used to improve the URL fallback search and the history entry.'),
       company: z.string().max(80).optional().describe('Company name used in the default filename and history.'),
       ai: z.boolean().optional().describe('true or omitted = DeepSeek tailoring (default); false = deterministic local tailoring.'),
-      filename: z.string().max(140).optional().describe('Exact output filename requested by the user, for example "Naveen_Morla_Acme_Data_Engineer.pdf".'),
+      filename: z.string().max(140).optional().describe('Short output filename, for example "Naveen_Morla_ML_Engineer". Levels, req IDs, team names, and dates are removed and the name is capped at about 40 characters.'),
     }),
   }, async ({ jobDescription, jobUrl, jobTitle, company, ai, filename }) => {
     const safeCompany = String(company || '').trim().slice(0, 80);
     const safeTitle = String(jobTitle || '').trim().slice(0, 120);
-    const name = pdfFilename(safeCompany, filename);
+    const name = pdfFilename(safeCompany, filename, safeTitle);
     const useAi = ai !== false && Boolean(env.DEEPSEEK_API_KEY);
     try {
       const master = await loadStoredMaster(env);
@@ -989,7 +1029,7 @@ async function handleTailorPdf(request, env) {
   const ai = body.ai !== false && Boolean(env.DEEPSEEK_API_KEY);
   const company = String(body.company || '').trim().slice(0, 80);
   const jobTitle = String(body.jobTitle || '').trim().slice(0, 120);
-  const filename = pdfFilename(company, body.filename);
+  const filename = pdfFilename(company, body.filename, jobTitle);
 
   if (body.ai === true && !env.DEEPSEEK_API_KEY) {
     return apiError('ai was requested but DEEPSEEK_API_KEY is not configured.', 400);

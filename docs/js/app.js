@@ -64,7 +64,7 @@ import {
 import {
   compactTitle,
   copyText,
-  withoutJuniorLevel,
+  shortRoleTitle,
   debounce,
   downloadBlob,
   downloadText,
@@ -999,8 +999,8 @@ function ensurePlanFits() {
 
 function resumeFileBase() {
   const name = state.master.profile?.name || 'Resume';
-  const title = withoutJuniorLevel(compactTitle(state.report?.title || state.baseReport?.title || ''));
-  return sanitizeFilename(`${name}_Resume${title ? `_${title}` : ''}`);
+  const title = shortRoleTitle(state.report?.title || state.baseReport?.title || '');
+  return sanitizeFilename(`${name}_${title || 'Resume'}`);
 }
 
 async function downloadDocx() {
